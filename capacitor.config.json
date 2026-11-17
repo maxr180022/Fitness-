@@ -1,0 +1,11 @@
+{
+  "appId": "uy.maxricco.fitness",
+  "appName": "Фитнес",
+  "webDir": "www",
+  "server": {
+    "url": "https://maxr180022.github.io/Fitness-/",
+    "cleartext": false,
+    "allowNavigation": ["maxr180022.github.io"]
+  },
+  "android": { "allowMixedContent": false }
+}
