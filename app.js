@@ -194,10 +194,10 @@ function viewToday() {
   if (w) {
     const s = getSession(w.id, false); const dc = doneCount(s);
     const pending = w.status === 'pending';
-    h += `<div class="card ${dc ? 'done' : 'accent'}"><div class="row between"><h3>${esc(w.when)} · ${esc(w.title)}</h3>
-      ${pending ? '<span class="tag">программа скоро</span>' : dc ? `<span class="tag ok">${dc} подх.${s && s.finished ? ' · ' + fmtLong(sessionSeconds(s)) : ''}</span>` : '<span class="tag acc">сегодня</span>'}</div>
-      <p class="muted">${esc(w.description)}</p>
-      <a class="btn primary block" href="#/w/${esc(w.id)}">${dc ? 'Продолжить' : pending ? 'Открыть' : 'Начать тренировку'}</a></div>`;
+    h += `<div class="card ${dc ? 'done' : 'accent'} today"><div class="row between"><h3>${esc(w.title)}</h3>
+      ${pending ? '<span class="tag">скоро</span>' : dc ? `<span class="tag ok">${dc} подх.${s && s.finished ? ' · ' + fmtLong(sessionSeconds(s)) : ''}</span>` : '<span class="tag acc">сегодня</span>'}</div>
+      <div class="muted small" style="margin:2px 0 10px">${w.items.length} ${plural(w.items.length, 'упражнение', 'упражнения', 'упражнений')}${s && s.finished ? ' · день закончен' : ''}</div>
+      <a class="btn primary block" href="#/w/${esc(w.id)}">${s && s.finished ? 'Открыть' : dc ? 'Продолжить' : pending ? 'Открыть' : 'Начать тренировку'}</a></div>`;
   } else {
     h += `<div class="card"><h3>Сегодня без силовой</h3><p class="muted">День восстановления: прогулка и лёгкая растяжка по желанию.</p></div>`;
   }
