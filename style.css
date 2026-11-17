@@ -94,3 +94,15 @@ th { color: var(--muted); font-weight: 600; }
 svg.chart { width: 100%; height: auto; display: block; }
 
 body.has-timer main { padding-bottom: calc(var(--nav-h) + 120px + env(safe-area-inset-bottom)); }
+
+@media print {
+  html, body { background: #fff !important; color: #111 !important; }
+  .nav, .timer, .toast, .noprint { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .card { background: #fff !important; border: 1px solid #bbb !important; break-inside: avoid; }
+  .muted, th { color: #444 !important; }
+  .tag { border: 1px solid #aaa; background: #fff !important; color: #111 !important; }
+  h1, h2, h3, td, th, p, li { color: #111 !important; }
+  a { color: #111 !important; text-decoration: none; }
+  th, td { border-bottom: 1px solid #ccc !important; }
+}

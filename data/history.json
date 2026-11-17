@@ -1,0 +1,76 @@
+{
+ "logs": {
+  "2026-11-17": {
+   "tue": {
+    "sets": {
+     "squat": [
+      {
+       "kg": "",
+       "reps": "12",
+       "done": true
+      },
+      {
+       "kg": "",
+       "reps": "12",
+       "done": true
+      },
+      {
+       "kg": "",
+       "reps": "12",
+       "done": true
+      }
+     ],
+     "pushup": [
+      {
+       "kg": "",
+       "reps": "10",
+       "done": true
+      },
+      {
+       "kg": "",
+       "reps": "10",
+       "done": true
+      },
+      {
+       "kg": "",
+       "reps": "10",
+       "done": true
+      }
+     ],
+     "bridge": [
+      {
+       "kg": "",
+       "reps": "15",
+       "done": true
+      },
+      {
+       "kg": "",
+       "reps": "15",
+       "done": true
+      }
+     ],
+     "plank": [
+      {
+       "kg": "",
+       "reps": "60",
+       "done": true
+      },
+      {
+       "kg": "",
+       "reps": "60",
+       "done": true
+      }
+     ],
+     "birddog": [
+      {
+       "kg": "",
+       "reps": "8",
+       "done": true
+      }
+     ]
+    },
+    "finished": false
+   }
+  }
+ }
+}

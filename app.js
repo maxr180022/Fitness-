@@ -49,6 +49,18 @@ async function getJSON(path) {
     throw e;
   }
 }
+// data/history.json: записи тренировок, добавленные в репозиторий вручную.
+// Вставляются на телефон один раз и только если на эту дату и тренировку записи ещё нет.
+async function mergeHistory() {
+  let h;
+  try { h = await getJSON('data/history.json'); } catch (e) { return; }
+  let added = 0;
+  Object.entries((h && h.logs) || {}).forEach(([d, day]) => Object.entries(day).forEach(([wid, sess]) => {
+    DB.logs[d] = DB.logs[d] || {};
+    if (!DB.logs[d][wid]) { DB.logs[d][wid] = sess; added++; }
+  }));
+  if (added) save();
+}
 async function loadContent() {
   const [p, n] = await Promise.all([getJSON('data/program.json'), getJSON('data/nutrition.json')]);
   const changed = JSON.stringify(p) !== JSON.stringify(P) || JSON.stringify(n) !== JSON.stringify(N);
@@ -365,7 +377,10 @@ function lineChart(points, unit) {
 const MFIELDS = [['waist', 'Талия'], ['navel', 'Живот на уровне пупка'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Рука'], ['hips', 'Бёдра'], ['thigh', 'Нога (бедро)']];
 
 function viewProgress() {
-  let h = '<h1>Прогресс</h1>';
+  let h = `<div class="row between"><h1>Прогресс</h1><a class="btn" href="#/report">PDF</a></div>
+    <div class="card"><h3>Отправить Claude</h3><p class="muted small">Одним нажатием: выбери в меню «Поделиться» приложение Claude, и журнал (подходы, время, замеры) придёт в чат.</p>
+    <button class="primary block" data-act="sharetext">Отправить журнал в чат</button>
+    <button class="block" style="margin-top:8px" data-act="sharefile">Поделиться файлом данных</button></div>`;
   h += `<div class="card"><h3>Новый замер, см</h3><p class="muted small">Талию мерь утром, натощак, на уровне пупка, на выдохе. Достаточно раз в неделю, лучше в воскресенье.</p>
     <label class="f">Дата</label><input type="date" id="m-date" value="${dateStr()}">
     <div class="grid2">${MFIELDS.map(([k, t]) => `<div><label class="f">${t}</label><input type="text" inputmode="decimal" id="m-${k}" placeholder="см"></div>`).join('')}</div>
@@ -402,6 +417,47 @@ function viewProgress() {
   return h;
 }
 
+function viewReport() {
+  let h = `<div class="noprint"><a href="#/progress" data-act="back">← Назад</a>
+    <div class="card"><p class="muted small">Это печатная версия: программа тренировок и твой журнал. Нажми кнопку и выбери «Сохранить как PDF» (на Android в окне печати вверху выбери «Сохранить как PDF»).</p>
+    <button class="primary block" data-act="print">Сохранить в PDF</button></div></div>`;
+  h += `<h1>Тренировки: программа и журнал</h1><p class="muted small">Создано ${shortDate(dateStr())}. Цель: рекомпозиция тела, талия и сила.</p><h2>Программа</h2>`;
+  (P.workouts || []).forEach((w) => {
+    h += `<div class="card"><h3>${esc(w.title)} · ${esc(w.when)}</h3><p class="small">${esc(w.description)}</p>`;
+    if (w.warmup) h += `<p class="small"><b>Разминка:</b> ${esc(w.warmup)}</p>`;
+    if (w.items.length) {
+      h += `<table><tr><th>Упражнение</th><th>Подходы</th><th>Мышцы</th></tr>${w.items.map((id) => {
+        const ex = P.exercises[id]; return ex ? `<tr><td>${esc(ex.name)}</td><td>${setsCount(w, id)} × ${esc(ex.target)}</td><td>${esc(ex.muscles)}</td></tr>` : '';
+      }).join('')}</table>`;
+      if (Array.isArray(w.groups) && w.groups.length) {
+        h += `<p class="small"><b>Сплит (пары подряд):</b> ${w.groups.map((g) => g.map((id) => P.exercises[id] ? P.exercises[id].name : id).join(' + ')).join('; ')}.</p>`;
+      }
+    }
+    h += '</div>';
+  });
+  h += '<h2>Техника выполнения</h2>';
+  Object.values(P.exercises).forEach((ex) => {
+    h += `<div class="card"><h3>${esc(ex.name)}</h3><ul class="tips small">${ex.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div>`;
+  });
+  h += '<h2>Журнал</h2>';
+  const days = Object.keys(DB.logs).sort().reverse(); let any = false;
+  days.forEach((d) => Object.entries(DB.logs[d]).forEach(([wid, s]) => {
+    if (!doneCount(s)) return; any = true;
+    const w = workoutById(wid); const secs = sessionSeconds(s);
+    h += `<div class="card"><h3>${shortDate(d)} · ${esc(w ? w.title : wid)}${s.finished && secs ? ' · ' + fmtLong(secs) : ''}</h3><table><tr><th>Упражнение</th><th>Подходы</th></tr>${Object.entries(s.sets).filter(([, a]) => a.some((x) => x.done)).map(([e, a]) => {
+      const ex = P.exercises[e];
+      return `<tr><td>${esc(ex ? ex.name : e)}</td><td>${a.filter((x) => x.done).map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}</td></tr>`;
+    }).join('')}</table></div>`;
+  }));
+  if (!any) h += '<p class="muted small">Записей пока нет.</p>';
+  if (DB.measures.length) {
+    const rows = [...DB.measures].sort((a, b) => (a.date < b.date ? 1 : -1));
+    h += `<h2>Замеры, см</h2><div class="card"><table><tr><th>Дата</th>${MFIELDS.map(([, t]) => `<th>${esc(t.split(' ')[0])}</th>`).join('')}</tr>${rows.map((m) =>
+      `<tr><td>${shortDate(m.date)}</td>${MFIELDS.map(([k]) => `<td>${m[k] != null ? m[k] : ''}</td>`).join('')}</tr>`).join('')}</table></div>`;
+  }
+  return h;
+}
+
 function viewMore() {
   const ts = (k) => esc(localStorage.getItem(k) || '');
   return `<h1>Ещё</h1>
@@ -433,6 +489,7 @@ function render(keepScroll) {
     else if (r === 'food') { html = viewFood(); tab = 'food'; }
     else if (r === 'progress') { html = viewProgress(); tab = 'progress'; }
     else if (r === 'more') { html = viewMore(); tab = 'more'; }
+    else if (r === 'report') { html = viewReport(); tab = 'progress'; }
     else html = viewToday();
   } catch (e) {
     html = `<p class="pad">Ошибка отображения: ${esc(e.message)}</p>`;
@@ -516,6 +573,9 @@ document.addEventListener('click', (e) => {
   if (act === 'offline') { downloadAll(); return; }
   if (act === 'install') { if (installEvt) { installEvt.prompt(); installEvt = null; } return; }
   if (act === 'export') { exportData(); return; }
+  if (act === 'print') { window.print(); return; }
+  if (act === 'sharetext') { shareText(); return; }
+  if (act === 'sharefile') { shareFile(); return; }
   if (act === 'reset') {
     if (confirm('Удалить все подходы, замеры и отметки на этом телефоне? Это нельзя отменить.')) { DB = blank(); save(); toast('Данные удалены'); render(); }
   }
@@ -556,6 +616,41 @@ async function downloadAll() {
   }
   toast(ok === vids.length ? 'Все видео сохранены на телефоне' : 'Часть видео скачать не удалось');
 }
+function journalText() {
+  const lines = [`Журнал тренировок (${shortDate(dateStr())})`];
+  Object.keys(DB.logs).sort().reverse().slice(0, 14).forEach((d) => Object.entries(DB.logs[d]).forEach(([wid, s]) => {
+    if (!doneCount(s)) return;
+    const w = workoutById(wid); const secs = sessionSeconds(s);
+    lines.push(`\n${shortDate(d)} · ${w ? w.title : wid}${s.finished && secs ? ' · ' + fmtLong(secs) : ''}`);
+    Object.entries(s.sets).forEach(([e, a]) => {
+      const done = a.filter((x) => x.done); if (!done.length) return;
+      const ex = P.exercises[e];
+      lines.push(`- ${ex ? ex.name : e}: ${done.map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}${ex && ex.unit === 'sec' ? ' сек' : ''}`);
+    });
+  }));
+  const ms = [...DB.measures].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
+  if (ms.length) {
+    lines.push('\nЗамеры, см:');
+    ms.forEach((m) => lines.push(`${shortDate(m.date)}: ` + MFIELDS.filter(([k]) => m[k] != null).map(([k, t]) => `${t.toLowerCase()} ${m[k]}`).join(', ')));
+  }
+  return lines.join('\n');
+}
+async function shareText() {
+  const text = journalText();
+  try {
+    if (navigator.share) { await navigator.share({ title: 'Журнал тренировок', text }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); toast('Журнал скопирован. Вставь его в чат с Claude'); }
+  catch (e) { toast('Не удалось поделиться'); }
+}
+async function shareFile() {
+  const blob = new Blob([JSON.stringify({ app: 'fitness', exportedAt: new Date().toISOString(), data: DB }, null, 1)], { type: 'application/json' });
+  const file = new File([blob], `fitness-backup-${dateStr()}.json`, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Данные Фитнес' }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  exportData();
+}
 function exportData() {
   const blob = new Blob([JSON.stringify({ app: 'fitness', exportedAt: new Date().toISOString(), data: DB }, null, 1)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `fitness-backup-${dateStr()}.json`;
@@ -578,7 +673,7 @@ function importData(file) {
 /* ---------- запуск ---------- */
 async function init() {
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ok */ }
-  try { await loadContent(); } catch (e) {
+  try { await loadContent(); await mergeHistory(); } catch (e) {
     $('#app').innerHTML = '<p class="pad">Не удалось загрузить данные. Открой приложение при подключении к интернету один раз.</p>';
     return;
   }
