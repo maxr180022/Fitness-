@@ -272,7 +272,7 @@ function swapsOf(w) { DB.settings.swaps = DB.settings.swaps || {}; return DB.set
 function viewLib() {
   let h = '<h1>Упражнения</h1><div class="card list">';
   Object.entries(P.exercises).forEach(([id, ex]) => {
-    h += `<a class="item" href="#/ex/${esc(id)}">${ringHTML(ex, 0, 48)}<div class="grow"><div><b>${esc(ex.name)}</b></div><div class="muted small">${esc(ex.muscles)}</div></div><span class="chev">›</span></a>`;
+    h += `<a class="item" href="#/ex/${esc(id)}">${ringHTML(ex, 0, 40)}<div class="grow"><div><b>${esc(ex.name)}</b></div><div class="muted small">${esc(ex.muscles)}</div></div><span class="chev">›</span></a>`;
   });
   return h + '</div>';
 }
@@ -336,7 +336,7 @@ function viewWorkout(id) {
     if (isSplit && g.length > 1) h += `<div class="pairnote">Пара ${gi + 1} · подряд без отдыха</div>`;
     g.forEach((exId) => {
       const ex = P.exercises[exId]; if (!ex) { idx++; return; }
-      h += `<div class="exrow"><a class="exmain" href="#/w/${esc(w.id)}/${idx}">${ringHTML(ex, exFrac(w, exId), 64)}
+      h += `<div class="exrow"><a class="exmain" href="#/w/${esc(w.id)}/${idx}">${ringHTML(ex, exFrac(w, exId), 50)}
         <div class="grow"><div class="exn">${esc(ex.name)}</div><div class="exs">${esc(targetText(ex, nSets(w, exId)))}</div></div></a>
         <a class="kebab" href="#/ex/${esc(exId)}" aria-label="о упражнении">${ic('kebab')}</a></div>`;
       idx++;
@@ -372,7 +372,7 @@ function viewStep(wid, idxRaw) {
   const sess = getSession(w.id, false);
   const sec = ex.unit === 'sec'; const wt = !!ex.weighted;
   let h = `<div class="screen"><div class="top3"><a class="rbtn" href="#/w/${esc(w.id)}" data-act="back" aria-label="к списку">${ic('back')}</a>
-    ${ringHTML(ex, exFrac(w, exId), 104)}
+    ${ringHTML(ex, exFrac(w, exId), 84)}
     <div class="rt"><button class="rbtn" data-act="resttimer" aria-label="таймер отдыха">${ic('timer')}</button><button class="rbtn" data-act="panel" data-k="settings" aria-label="настройки">${ic('sliders')}</button></div></div>
     <h1 class="exname">${esc(ex.name)}</h1><div class="exsub">${esc(ex.muscles)}</div>
     <div class="trio"><button class="${panel === 'tech' ? 'on' : ''}" data-act="panel" data-k="tech">${ic('play')}<span>Техника</span></button>
@@ -392,7 +392,7 @@ function viewStep(wid, idxRaw) {
     const inW = new Set(flat);
     const opts = Object.entries(P.exercises).filter(([id]) => !inW.has(id));
     const orig = Object.keys(swapsOf(w)).find((k) => swapsOf(w)[k] === exId);
-    h += `<div class="panel"><h3>Заменить упражнение</h3>${opts.map(([id, e]) => `<button class="opt" data-act="swapto" data-id="${esc(id)}" data-cur="${esc(exId)}">${ringHTML(e, 0, 40)}<span class="grow"><b>${esc(e.name)}</b><small>${esc(e.muscles)}</small></span></button>`).join('') || '<p class="muted">Других упражнений пока нет.</p>'}
+    h += `<div class="panel"><h3>Заменить упражнение</h3>${opts.map(([id, e]) => `<button class="opt" data-act="swapto" data-id="${esc(id)}" data-cur="${esc(exId)}">${ringHTML(e, 0, 34)}<span class="grow"><b>${esc(e.name)}</b><small>${esc(e.muscles)}</small></span></button>`).join('') || '<p class="muted">Других упражнений пока нет.</p>'}
       ${orig ? `<button class="opt" data-act="swapback" data-orig="${esc(orig)}"><span class="grow"><b>Вернуть «${esc((P.exercises[orig] || {}).name || orig)}»</b></span></button>` : ''}</div>`;
   }
   h += `<div class="cols">${wt ? '<span>Вес</span>' : ''}<span>${sec ? 'Секунды' : 'Повторения'}</span></div>`;
@@ -405,7 +405,7 @@ function viewStep(wid, idxRaw) {
   const nx = flat[idx + 1] && P.exercises[flat[idx + 1]];
   const fin = sess && sess.finished;
   h += `<div class="botbar"><a class="rbtn" href="${prev}" aria-label="назад">${ic(idx > 0 ? 'prev' : 'list')}</a>`;
-  if (nx) h += `<a class="nextp" href="#/w/${esc(w.id)}/${idx + 1}">${ringHTML(nx, 0, 40)}<span class="grow"><b>${esc(nx.name)}</b><small>Далее</small></span>${ic('next')}</a>`;
+  if (nx) h += `<a class="nextp" href="#/w/${esc(w.id)}/${idx + 1}">${ringHTML(nx, 0, 34)}<span class="grow"><b>${esc(nx.name)}</b><small>Далее</small></span>${ic('next')}</a>`;
   else h += `<button class="nextp lime" data-act="finish" data-w="${esc(w.id)}"><span class="grow"><b>${fin ? 'День закончен ✓' : 'Закончить день'}</b><small>последнее упражнение</small></span>${ic('check')}</button>`;
   return h + '</div>';
 }
@@ -413,7 +413,7 @@ function viewStep(wid, idxRaw) {
 function viewExercise(id) {
   const ex = P.exercises[id];
   if (!ex) return '<p class="pad">Упражнение не найдено.</p>';
-  let h = `<a href="#/lib" data-act="back">← Назад</a><div class="center">${ringHTML(ex, 0, 104)}</div><h1 class="exname">${esc(ex.name)}</h1><div class="exsub">${esc(ex.muscles)} · ${esc(ex.target)}</div>
+  let h = `<a href="#/lib" data-act="back">← Назад</a><div class="center">${ringHTML(ex, 0, 84)}</div><h1 class="exname">${esc(ex.name)}</h1><div class="exsub">${esc(ex.muscles)} · ${esc(ex.target)}</div>
     ${videoHTML(ex)}<div class="card">${tipsHTML(ex)}</div>`;
   const rows = [];
   Object.keys(DB.logs).sort().reverse().forEach((d) => Object.values(DB.logs[d]).forEach((s) => {
@@ -587,7 +587,7 @@ function render(keepScroll) {
   let html = '', tab = 'today';
   const rk = parts.slice(0, 3).join('/');
   if (rk !== lastRoute) { panel = null; lastRoute = rk; }
-  document.body.dataset.r = r;
+  document.body.dataset.r = r === 'train' ? 'w' : r;
   try {
     if (r === '') html = viewToday();
     else if (r === 'train') { const dw = defaultWorkout(); html = dw ? viewWorkout(dw.id) : viewToday(); tab = 'train'; }
