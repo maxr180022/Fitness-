@@ -351,9 +351,11 @@ function viewWorkout(id) {
   });
   h += '</div></div>';
   // плавающая кнопка
-  const t = started ? fmtTime(sessionSeconds(sess)) : '0:00';
-  if (finished) h += `<button class="fab done" data-act="finish" data-w="${esc(w.id)}">${ic('check')}<span>Завершено · ${esc(fmtLong(sessionSeconds(sess)))}</span></button>`;
-  else if (started) h += `<div class="fabs"><a class="fab ghost" href="#/w/${esc(w.id)}/0"><span>Продолжить</span></a><button class="fab" data-act="finish" data-w="${esc(w.id)}"><span>Завершить · <b id="wclock" data-w="${esc(w.id)}">${t}</b></span></button></div>`;
+  const t = started ? fmtTime(sessionSeconds(sess)) : '';
+  const hasSets = doneCount(sess) > 0;
+  const dur = sessionSeconds(sess);
+  if (finished) h += `<button class="fab done" data-act="finish" data-w="${esc(w.id)}">${ic('check')}<span>День закончен${dur ? ' · ' + esc(fmtLong(dur)) : ''}</span></button>`;
+  else if (started || hasSets) h += `<div class="fabs"><a class="fab ghost" href="#/w/${esc(w.id)}/0"><span>Продолжить</span></a><button class="fab" data-act="finish" data-w="${esc(w.id)}"><span>Закончить день${started ? ' · <b id="wclock" data-w="' + esc(w.id) + '">' + t + '</b>' : ''}</span></button></div>`;
   else h += `<button class="fab" data-act="wstart" data-w="${esc(w.id)}"><span>Начать ${isCore ? 'блок' : 'день ' + esc(w.short || '')}</span></button>`;
   return h;
 }
@@ -411,7 +413,7 @@ function viewStep(wid, idxRaw) {
   const fin = sess && sess.finished;
   h += `<div class="botbar"><a class="rbtn" href="${prev}" aria-label="назад">${ic(idx > 0 ? 'prev' : 'list')}</a>`;
   if (nx) h += `<a class="nextp" href="#/w/${esc(w.id)}/${idx + 1}">${ringHTML(nx, 0, 40)}<span class="grow"><b>${esc(nx.name)}</b><small>Далее</small></span>${ic('next')}</a>`;
-  else h += `<button class="nextp lime" data-act="finish" data-w="${esc(w.id)}"><span class="grow"><b>${fin ? 'Тренировка завершена ✓' : 'Завершить тренировку'}</b><small>последнее упражнение</small></span>${ic('check')}</button>`;
+  else h += `<button class="nextp lime" data-act="finish" data-w="${esc(w.id)}"><span class="grow"><b>${fin ? 'День закончен ✓' : 'Закончить день'}</b><small>последнее упражнение</small></span>${ic('check')}</button>`;
   return h + '</div>';
 }
 
@@ -665,7 +667,7 @@ function stopRowTimer(early) {
   const r = RT; if (!r) return; clearInterval(r.iv); RT = null;
   const secs = early ? Math.max(1, Math.round(r.total - (r.end - Date.now()) / 1000)) : r.total;
   const wk = workoutById(r.w); const arr = getSets(r.w, r.exId, nSets(wk, r.exId));
-  arr[r.i].reps = String(secs); arr[r.i].done = true; save(); beep(); render(true);
+  arr[r.i].reps = String(secs); arr[r.i].done = true; startSession(r.w).lastAt = Date.now(); save(); beep(); render(true);
   afterSet(r.w, r.exId, r.i);
 }
 
@@ -680,7 +682,7 @@ document.addEventListener('click', (e) => {
     const arr = getSets(w, exId, nSets(wk, exId)); const s = arr[i];
     s.done = !s.done;
     if (s.done && !String(s.reps).trim()) s.reps = String(ex.def);
-    if (s.done) startSession(w);
+    if (s.done) { startSession(w).lastAt = Date.now(); }
     save(); render(true);
     if (s.done) afterSet(w, exId, i);
     return;
@@ -710,11 +712,14 @@ document.addEventListener('click', (e) => {
   if (act === 'finish') {
     const s = getSession(el.dataset.w, true);
     if (!s.finished) {
-      if (!s.startedAt) s.startedAt = Date.now();
-      s.finished = true; s.endedAt = Date.now(); s.durationSec = Math.round((s.endedAt - s.startedAt) / 1000);
+      const now = Date.now();
+      // если последний подход был давно, конец тренировки = время последнего подхода, а не нажатия кнопки
+      const end = s.lastAt && now - s.lastAt > 10 * 60 * 1000 ? s.lastAt : now;
+      s.finished = true; s.endedAt = end;
+      s.durationSec = s.startedAt ? Math.max(0, Math.round((end - s.startedAt) / 1000)) : null;
       stopTimer(); save();
-      toast(`Тренировка завершена: ${fmtLong(s.durationSec)}, подходов ${doneCount(s)}. Хорошая работа!`);
-    } else { s.finished = false; s.endedAt = null; s.durationSec = null; save(); toast('Отметка снята, время идёт дальше'); }
+      toast(s.durationSec ? `День закончен: ${fmtLong(s.durationSec)}, подходов ${doneCount(s)}. Хорошая работа!` : `День закончен, подходов ${doneCount(s)}. Хорошая работа!`);
+    } else { s.finished = false; s.endedAt = null; s.durationSec = null; save(); toast('Отметка снята, день снова открыт'); }
     render(true); return;
   }
   if (act === 't+') { if (T) T.end += 15000; return; }
