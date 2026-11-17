@@ -376,7 +376,7 @@ function viewStep(wid, idxRaw) {
   const n = nSets(w, exId); const arr = getSets(w.id, exId, n);
   const sess = getSession(w.id, false);
   const sec = ex.unit === 'sec'; const wt = !!ex.weighted;
-  let h = `<div class="screen"><div class="top3"><a class="rbtn" href="#/w/${esc(w.id)}" aria-label="к списку">${ic('back')}</a>
+  let h = `<div class="screen"><div class="top3"><a class="rbtn" href="#/w/${esc(w.id)}" data-act="back" aria-label="к списку">${ic('back')}</a>
     ${ringHTML(ex, exFrac(w, exId), 104)}
     <div class="rt"><button class="rbtn" data-act="resttimer" aria-label="таймер отдыха">${ic('timer')}</button><button class="rbtn" data-act="panel" data-k="settings" aria-label="настройки">${ic('sliders')}</button></div></div>
     <h1 class="exname">${esc(ex.name)}</h1><div class="exsub">${esc(ex.muscles)}</div>
@@ -673,7 +673,7 @@ function stopRowTimer(early) {
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
-  if (act === 'back') { e.preventDefault(); if (history.length > 1) history.back(); else location.hash = '#/train'; return; }
+  if (act === 'back') { e.preventDefault(); goUp(); return; }
   if (act === 'chk') {
     const row = el.closest('.srow'); const { w, e: exId } = row.dataset; const i = +row.dataset.i;
     const ex = P.exercises[exId]; const wk = workoutById(w);
@@ -837,8 +837,43 @@ function importData(file) {
   rd.readAsText(file);
 }
 
+/* ---------- кнопка «Назад»: идём на экран выше, а не из приложения ---------- */
+function parentOf(hash) {
+  const p = String(hash || '#/').replace(/^#\/?/, '').split('/'); const r = p[0] || '';
+  if (r === '') return null;
+  if (r === 'w' && p[2] !== undefined && p[2] !== '') return `#/w/${p[1]}`;
+  if (r === 'ex') return '#/lib';
+  if (r === 'lib') return '#/more';
+  if (r === 'report') return '#/progress';
+  return '#/';
+}
+function goUp() {
+  if (panel) { panel = null; render(true); return true; }
+  const up = parentOf(location.hash);
+  if (up) { location.replace(up); return true; }
+  return false;
+}
+function setupBack() {
+  // под первой страницей держим «Сегодня», чтобы «Назад» никогда не выбрасывал из приложения с глубокого экрана
+  try {
+    const h0 = location.hash || '#/';
+    if (parentOf(h0) && history.length <= 1) {
+      history.replaceState(null, '', location.pathname + location.search + '#/');
+      history.pushState(null, '', location.pathname + location.search + h0);
+    }
+  } catch (e) { /* не критично */ }
+  // системная кнопка в Android-приложении (плагин App из Capacitor)
+  try {
+    const A = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (A && A.addListener) {
+      A.addListener('backButton', () => { if (!goUp() && A.exitApp) A.exitApp(); });
+    }
+  } catch (e) { /* не критично */ }
+}
+
 /* ---------- запуск ---------- */
 async function init() {
+  setupBack();
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ok */ }
   try { await loadContent(); await mergeHistory(); } catch (e) {
     $('#app').innerHTML = '<p class="pad">Не удалось загрузить данные. Открой приложение при подключении к интернету один раз.</p>';
