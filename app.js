@@ -112,7 +112,7 @@ function weekStats() {
     const d = new Date(now); d.setDate(now.getDate() - i);
     const day = DB.logs[dateStr(d)];
     if (day) Object.entries(day).forEach(([k, s]) => {
-      if (doneCount(s) > 0) { if (k !== 'core') c++; if (s.finished) sec += sessionSeconds(s); }
+      if (doneCount(s) > 0) { c++; if (s.finished) sec += sessionSeconds(s); }
     });
   }
   return { c, sec };
@@ -190,7 +190,6 @@ function viewToday() {
   const wd = now.getDay();
   const title = `${WD[wd][0].toUpperCase()}${WD[wd].slice(1)}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
   const w = (P.workouts || []).find((x) => x.weekday === wd);
-  const core = workoutById('core');
   let h = `<h1>${esc(title)}</h1>`;
   if (w) {
     const s = getSession(w.id, false); const dc = doneCount(s);
@@ -200,13 +199,7 @@ function viewToday() {
       <p class="muted">${esc(w.description)}</p>
       <a class="btn primary block" href="#/w/${esc(w.id)}">${dc ? 'Продолжить' : pending ? 'Открыть' : 'Начать тренировку'}</a></div>`;
   } else {
-    h += `<div class="card"><h3>Сегодня без силовой</h3><p class="muted">День восстановления: прогулка и блок «Кор и спина» по желанию.</p></div>`;
-  }
-  if (core) {
-    const cs = getSession('core', false);
-    h += `<div class="card ${doneCount(cs) ? 'done' : ''}"><div class="row between"><h3>${esc(core.title)}</h3><span class="tag">~10 мин</span></div>
-      <p class="muted small">${esc(core.when)}. ${esc(core.items.map((id) => P.exercises[id].name).join(', '))}.</p>
-      <a class="btn block" href="#/w/core">Открыть блок</a></div>`;
+    h += `<div class="card"><h3>Сегодня без силовой</h3><p class="muted">День восстановления: прогулка и лёгкая растяжка по желанию.</p></div>`;
   }
   // питание сегодня
   const m = (N.menu || []).find((x) => [].concat(x.weekday).includes(wd));
@@ -251,7 +244,7 @@ let RT = null;    // таймер внутри строки подхода (се
 const extraSets = (w, exId) => { const s = getSession(w.id, false); return (s && s.extra && s.extra[exId]) || 0; };
 const nSets = (w, exId) => setsCount(w, exId) + extraSets(w, exId);
 const phOf = (ex) => { const m = String(ex.target || '').match(/^[\d–-]+/); return m ? m[0] : String(ex.def); };
-const targetText = (ex, n) => (ex.unit === 'sec' ? `${n} × ${ex.target}` : `${n} × ${ex.target}${/на /.test(ex.target) ? '' : ' повторений'}`);
+const targetText = (ex, n) => `${n} × ${ex.target}${ex.unit !== 'sec' && /^[\d–-]+$/.test(String(ex.target)) ? ' повторений' : ''}`;
 
 function ringHTML(ex, frac, size) {
   const deg = Math.round(360 * Math.max(0, Math.min(1, frac)));
@@ -265,7 +258,7 @@ function exFrac(w, exId) {
 }
 function defaultWorkout() {
   const wd = new Date().getDay();
-  const list = (P.workouts || []).filter((x) => x.id !== 'core');
+  const list = (P.workouts || []);
   return list.find((x) => x.weekday === wd && x.items.length) || list.find((x) => x.items.length) || list[0];
 }
 function weekDays() {
@@ -309,7 +302,7 @@ function settingsPanel(w) {
 function viewWorkout(id) {
   const w = workoutById(id);
   if (!w) return '<p class="pad">Тренировка не найдена.</p>';
-  const isCore = w.id === 'core';
+  const isCore = false;
   const selWd = isCore ? new Date().getDay() : w.weekday;
   const tue = workoutById('tue'), fri = workoutById('fri');
   // верхняя панель
@@ -317,7 +310,7 @@ function viewWorkout(id) {
     <h1 class="ttl">${esc(w.title)}</h1><button class="rbtn" data-act="panel" data-k="settings" aria-label="настройки">${ic('sliders')}</button></div>`;
   // неделя
   h += '<div class="week">' + weekDays().map((d, i) => {
-    const wk = (P.workouts || []).find((x) => x.weekday === d.getDay() && x.id !== 'core');
+    const wk = (P.workouts || []).find((x) => x.weekday === d.getDay());
     const logs = DB.logs[dateStr(d)]; let done = false;
     if (logs) Object.values(logs).forEach((s) => { if (doneCount(s) > 0) done = true; });
     const sel = d.getDay() === selWd;
@@ -326,8 +319,8 @@ function viewWorkout(id) {
     return wk ? `<a class="wd ${sel ? 'sel' : ''}" href="#/w/${esc(wk.id)}">${inner}</a>` : `<span class="wd ${sel ? 'sel' : ''}">${inner}</span>`;
   }).join('') + '</div>';
   // А/Б + блок кор
-  h += `<div class="seg2"><div class="seg"><a class="${w.id === 'tue' ? 'on' : ''}" href="#/w/tue">${esc((tue && tue.short) || 'А')}</a><a class="${w.id === 'fri' ? 'on' : ''}" href="#/w/fri">${esc((fri && fri.short) || 'Б')}</a></div>
-    <a class="selp ${isCore ? 'on' : ''}" href="${isCore ? '#/w/' + esc(defaultWorkout().id) : '#/w/core'}"><i class="dot"></i><span>${isCore ? 'Основная' : 'Кор и спина'}</span>${ic('chev')}</a></div>`;
+  h += `<div class="seg2 one"><div class="seg"><a class="${w.id === 'tue' ? 'on' : ''}" href="#/w/tue">${esc((tue && tue.short) || 'А')}</a><a class="${w.id === 'fri' ? 'on' : ''}" href="#/w/fri">${esc((fri && fri.short) || 'Б')}</a></div>
+</div>`;
   if (panel === 'settings') h += settingsPanel(w);
   if (w.status === 'pending' || !w.items.length) {
     return h + `<div class="panel"><p>${esc(w.description)}</p></div></div>`;

@@ -167,6 +167,7 @@ a.rbtn { color: #fff; }
 .wdot.done, .wd.sel .wdot { background: var(--lime); }
 .wk { font-weight: 800; font-size: 15px; }
 .seg2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; margin: 6px 0 4px; }
+.seg2.one { grid-template-columns: 1fr; }
 .seg { display: flex; background: #151517; border: 1.5px solid #26262a; border-radius: 22px; padding: 4px; }
 .seg a { flex: 1; text-align: center; padding: 11px 0; border-radius: 18px; color: #cfcfd4; text-decoration: none; font: 800 15px var(--wide); }
 .seg a.on { background: #2c2c30; color: #fff; }
