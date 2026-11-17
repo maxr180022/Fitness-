@@ -21,6 +21,7 @@ let foodTab = 'menu';
 let installEvt = null;
 let swReg = null;
 let wakeLock = null;
+let lastRoute = '';
 
 function blank() { return { logs: {}, measures: [], water: {}, shop: {}, settings: { split: true } }; }
 function loadDB() {
@@ -224,17 +225,61 @@ function viewToday() {
   return h;
 }
 
-function viewTrain() {
-  let h = '<h1>Тренировки</h1>';
-  (P.workouts || []).forEach((w) => {
-    const s = getSession(w.id, false); const dc = doneCount(s);
-    h += `<a class="card" style="display:block;color:inherit;text-decoration:none" href="#/w/${esc(w.id)}">
-      <div class="row between"><h3>${esc(w.title)}</h3>${w.status === 'pending' ? '<span class="tag">скоро</span>' : dc ? `<span class="tag ok">сегодня ${dc}</span>` : '<span class="tag"> </span>'}</div>
-      <div class="muted small">${esc(w.when)}${w.items.length ? ' · ' + w.items.length + ' упражн.' : ''}</div></a>`;
-  });
-  h += '<h2>Все упражнения</h2><div class="card list">';
+/* ---------- иконки и мелкие помощники ---------- */
+const IC_P = {
+  back: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  timer: '<circle cx="12" cy="14" r="7"/><path d="M12 14v-3.5M9.5 3h5M12 3v4"/>',
+  sliders: '<path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/>',
+  play: '<path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
+  history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5M3.5 3.5v5h5M12 7.5V12l3 2"/>',
+  swap: '<path d="M4 9V6h14M15 3l3 3-3 3M20 15v3H6M9 21l-3-3 3-3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  prev: '<path d="M12 6l-6 6 6 6M19 6l-6 6 6 6"/>',
+  next: '<path d="M5 6l6 6-6 6M12 6l6 6-6 6"/>',
+  kebab: '<circle cx="12" cy="5" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.8" fill="currentColor" stroke="none"/>',
+  list: '<path d="M5 6h14M5 12h14M5 18h14"/>',
+  chev: '<path d="M7 10l5 5 5-5"/>',
+};
+const ic = (n) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${IC_P[n]}</svg>`;
+const plural = (n, a, b, c) => { const m = n % 100, k = n % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; };
+const DSHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+let panel = null; // раскрытая панель: tech | hist | swap | settings
+let RT = null;    // таймер внутри строки подхода (секунды)
+
+const extraSets = (w, exId) => { const s = getSession(w.id, false); return (s && s.extra && s.extra[exId]) || 0; };
+const nSets = (w, exId) => setsCount(w, exId) + extraSets(w, exId);
+const phOf = (ex) => { const m = String(ex.target || '').match(/^[\d–-]+/); return m ? m[0] : String(ex.def); };
+const targetText = (ex, n) => (ex.unit === 'sec' ? `${n} × ${ex.target}` : `${n} × ${ex.target}${/на /.test(ex.target) ? '' : ' повторений'}`);
+
+function ringHTML(ex, frac, size) {
+  const deg = Math.round(360 * Math.max(0, Math.min(1, frac)));
+  const inner = ex.poster ? `<img src="${esc(ex.poster)}" alt="" loading="lazy">` : `<span class="ph">${esc(ex.name.slice(0, 1))}</span>`;
+  return `<span class="ring" style="--p:${deg}deg;--s:${size}px">${inner}</span>`;
+}
+function exFrac(w, exId) {
+  const n = nSets(w, exId); const s = getSession(w.id, false);
+  const arr = (s && s.sets && s.sets[exId]) || [];
+  return n ? arr.filter((x) => x.done).length / n : 0;
+}
+function defaultWorkout() {
+  const wd = new Date().getDay();
+  const list = (P.workouts || []).filter((x) => x.id !== 'core');
+  return list.find((x) => x.weekday === wd && x.items.length) || list.find((x) => x.items.length) || list[0];
+}
+function weekDays() {
+  const now = new Date(); const dow = (now.getDay() + 6) % 7;
+  const mon = new Date(now); mon.setDate(now.getDate() - dow);
+  return [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d; });
+}
+function swapsOf(w) { DB.settings.swaps = DB.settings.swaps || {}; return DB.settings.swaps[w.id] || {}; }
+
+/* ---------- экраны ---------- */
+function viewLib() {
+  let h = '<h1>Упражнения</h1><div class="card list">';
   Object.entries(P.exercises).forEach(([id, ex]) => {
-    h += `<a class="item" href="#/ex/${esc(id)}"><div class="grow"><div>${esc(ex.name)}</div><div class="muted small">${esc(ex.muscles)}</div></div><span class="chev">›</span></a>`;
+    h += `<a class="item" href="#/ex/${esc(id)}">${ringHTML(ex, 0, 48)}<div class="grow"><div><b>${esc(ex.name)}</b></div><div class="muted small">${esc(ex.muscles)}</div></div><span class="chev">›</span></a>`;
   });
   return h + '</div>';
 }
@@ -249,68 +294,131 @@ function tipsHTML(ex) {
 }
 
 function workoutGroups(w) {
+  const sw = swapsOf(w); const m = (e) => sw[e] || e;
   const split = DB.settings.split && Array.isArray(w.groups) && w.groups.length;
-  return split ? w.groups : w.items.map((e) => [e]);
+  return (split ? w.groups : w.items.map((e) => [e])).map((g) => g.map(m));
 }
+
+function settingsPanel(w) {
+  const has = Array.isArray(w.groups) && w.groups.length;
+  return `<div class="panel"><h3>Настройки тренировки</h3>
+    ${has ? `<div class="row between"><div class="grow"><b>Сплит</b><div class="muted small">Пары упражнений подряд без отдыха, отдых после пары. Приложение само переключает на второе упражнение.</div></div>
+      <button class="sw ${DB.settings.split ? 'on' : ''}" data-act="splitmode" aria-label="сплит"><i></i></button></div>` : '<p class="muted small">Для этой тренировки пока нет пар упражнений.</p>'}</div>`;
+}
+
 function viewWorkout(id) {
   const w = workoutById(id);
   if (!w) return '<p class="pad">Тренировка не найдена.</p>';
-  let h = `<a href="#/train" data-act="back">← Назад</a><h1>${esc(w.title)}</h1><div class="muted">${esc(w.when)}</div>
-    <div class="card"><p>${esc(w.description)}</p></div>`;
-  if (w.status === 'pending' || !w.items.length) return h;
+  const isCore = w.id === 'core';
+  const selWd = isCore ? new Date().getDay() : w.weekday;
+  const tue = workoutById('tue'), fri = workoutById('fri');
+  // верхняя панель
+  let h = `<div class="screen"><div class="top2"><a class="rbtn" href="#/" data-act="back" aria-label="назад">${ic('back')}</a>
+    <h1 class="ttl">${esc(w.title)}</h1><button class="rbtn" data-act="panel" data-k="settings" aria-label="настройки">${ic('sliders')}</button></div>`;
+  // неделя
+  h += '<div class="week">' + weekDays().map((d, i) => {
+    const wk = (P.workouts || []).find((x) => x.weekday === d.getDay() && x.id !== 'core');
+    const logs = DB.logs[dateStr(d)]; let done = false;
+    if (logs) Object.values(logs).forEach((s) => { if (doneCount(s) > 0) done = true; });
+    const sel = d.getDay() === selWd;
+    const label = sel ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}` : DSHORT[i];
+    const inner = `<span class="wl">${label}</span><i class="wdot ${done ? 'done' : ''}"></i><span class="wk">${wk ? esc(wk.short || '•') : '--'}</span>`;
+    return wk ? `<a class="wd ${sel ? 'sel' : ''}" href="#/w/${esc(wk.id)}">${inner}</a>` : `<span class="wd ${sel ? 'sel' : ''}">${inner}</span>`;
+  }).join('') + '</div>';
+  // А/Б + блок кор
+  h += `<div class="seg2"><div class="seg"><a class="${w.id === 'tue' ? 'on' : ''}" href="#/w/tue">${esc((tue && tue.short) || 'А')}</a><a class="${w.id === 'fri' ? 'on' : ''}" href="#/w/fri">${esc((fri && fri.short) || 'Б')}</a></div>
+    <a class="selp ${isCore ? 'on' : ''}" href="${isCore ? '#/w/' + esc(defaultWorkout().id) : '#/w/core'}"><i class="dot"></i><span>${isCore ? 'Основная' : 'Кор и спина'}</span>${ic('chev')}</a></div>`;
+  if (panel === 'settings') h += settingsPanel(w);
+  if (w.status === 'pending' || !w.items.length) {
+    return h + `<div class="panel"><p>${esc(w.description)}</p></div></div>`;
+  }
   const sess = getSession(w.id, false);
   const started = sess && sess.startedAt, finished = sess && sess.finished;
-  h += `<div class="card ${finished ? 'done' : started ? 'accent' : ''}"><div class="row between">
-    <div><div class="muted small">Время тренировки</div><div class="t" style="font-size:30px;font-weight:700" id="wclock" data-w="${esc(w.id)}">${started ? fmtTime(sessionSeconds(sess)) : '0:00'}</div></div>
-    ${started ? (finished ? '<span class="tag ok">завершена</span>' : '<span class="tag acc">идёт</span>') : `<button class="primary" data-act="wstart" data-w="${esc(w.id)}">▶ Начать</button>`}</div></div>`;
-  if (Array.isArray(w.groups) && w.groups.length) {
-    h += `<div class="row between" style="margin:6px 0"><div class="muted small">Режим: <b>${DB.settings.split ? 'сплит (пары упражнений подряд)' : 'по порядку'}</b></div>
-      <button class="ghost" style="padding:6px 10px" data-act="splitmode">${DB.settings.split ? 'По порядку' : 'Сплит'}</button></div>`;
-  }
-  if (w.warmup) h += `<div class="card"><h3>Разминка</h3><p class="muted">${esc(w.warmup)}</p></div>`;
-  const groups = workoutGroups(w);
+  const groups = workoutGroups(w); const flat = groups.flat();
   const isSplit = groups.some((g) => g.length > 1);
-  h += `<p class="muted small">${w.rounds ? w.rounds + ' круга. ' : ''}${isSplit ? 'В паре делай упражнения подряд без отдыха, таймер отдыха запустится после второго.' : 'Отметь подход галочкой, запустится таймер отдыха.'}</p>`;
+  if (w.warmup) h += `<div class="sect">Разминка</div><div class="panel"><p class="muted">${esc(w.warmup)}</p></div>`;
+  h += `<div class="sect">${flat.length} ${plural(flat.length, 'упражнение', 'упражнения', 'упражнений')}</div><div class="exlist">`;
+  let idx = 0;
   groups.forEach((g, gi) => {
-    const exs = g.map((e) => P.exercises[e]).filter(Boolean); if (!exs.length) return;
-    const n = Math.max(...g.map((e) => setsCount(w, e)));
-    h += `<div class="card" data-g="${gi}">`;
-    if (g.length > 1) h += `<div class="row between"><h3>Пара ${gi + 1}</h3><span class="tag acc">${n} круга</span></div>`;
-    g.forEach((exId, k) => {
-      const ex = P.exercises[exId]; if (!ex) return;
-      const last = lastTime(exId, w.id);
-      h += `<div style="margin-top:${k ? 10 : 0}px"><div class="row between"><h3>${g.length > 1 ? String.fromCharCode(65 + k) + '. ' : ''}${esc(ex.name)}</h3><span class="tag">${setsCount(w, exId)} × ${esc(ex.target)}</span></div>
-        <div class="muted small">${esc(ex.muscles)}${last ? ' · раньше ' + esc(last) : ''}</div>
-        <details><summary class="small" style="margin:6px 0;color:var(--accent)">Видео и техника</summary>${videoHTML(ex)}${tipsHTML(ex)}</details></div>`;
+    if (isSplit && g.length > 1) h += `<div class="pairnote">Пара ${gi + 1} · подряд без отдыха</div>`;
+    g.forEach((exId) => {
+      const ex = P.exercises[exId]; if (!ex) { idx++; return; }
+      h += `<div class="exrow"><a class="exmain" href="#/w/${esc(w.id)}/${idx}">${ringHTML(ex, exFrac(w, exId), 64)}
+        <div class="grow"><div class="exn">${esc(ex.name)}</div><div class="exs">${esc(targetText(ex, nSets(w, exId)))}</div></div></a>
+        <a class="kebab" href="#/ex/${esc(exId)}" aria-label="о упражнении">${ic('kebab')}</a></div>`;
+      idx++;
     });
-    // подходы: в сплите чередуем A1, B1, A2, B2
-    for (let i = 0; i < n; i++) {
-      if (g.length > 1) h += `<div class="small" style="color:var(--accent);margin-top:10px">Круг ${i + 1}</div>`;
-      g.forEach((exId, k) => {
-        const ex = P.exercises[exId]; if (!ex || i >= setsCount(w, exId)) return;
-        const arr = getSets(w.id, exId, setsCount(w, exId));
-        h += setRow(w.id, exId, i, arr[i], ex, g.length > 1 ? String.fromCharCode(65 + k) : '');
-      });
-    }
-    h += '</div>';
   });
-  h += `<button class="primary block" data-act="finish" data-w="${esc(w.id)}">${finished ? '✓ Тренировка завершена' : 'Завершить тренировку'}</button>`;
+  h += '</div></div>';
+  // плавающая кнопка
+  const t = started ? fmtTime(sessionSeconds(sess)) : '0:00';
+  if (finished) h += `<button class="fab done" data-act="finish" data-w="${esc(w.id)}">${ic('check')}<span>Завершено · ${esc(fmtLong(sessionSeconds(sess)))}</span></button>`;
+  else if (started) h += `<div class="fabs"><a class="fab ghost" href="#/w/${esc(w.id)}/0"><span>Продолжить</span></a><button class="fab" data-act="finish" data-w="${esc(w.id)}"><span>Завершить · <b id="wclock" data-w="${esc(w.id)}">${t}</b></span></button></div>`;
+  else h += `<button class="fab" data-act="wstart" data-w="${esc(w.id)}"><span>Начать ${isCore ? 'блок' : 'день ' + esc(w.short || '')}</span></button>`;
   return h;
 }
-function setRow(wid, exId, i, s, ex, letter) {
-  const sec = ex.unit === 'sec';
-  return `<div class="set ${s.done ? 'on' : ''}" data-w="${esc(wid)}" data-e="${esc(exId)}" data-i="${i}">
-    <span class="n" title="${esc(ex.name)}">${letter ? esc(letter) : i + 1}</span>
-    ${ex.weighted ? `<input inputmode="decimal" data-f="kg" value="${esc(s.kg)}" placeholder="кг" aria-label="вес, кг"><span class="u">кг</span>` : ''}
-    <input inputmode="numeric" data-f="reps" value="${esc(s.reps)}" placeholder="${esc(ex.def)}" aria-label="${sec ? 'секунды' : 'повторы'}"><span class="u">${sec ? 'сек' : 'повт.'}</span>
-    ${sec ? '<button class="tm" data-act="tm">▶ таймер</button>' : ''}
-    <button class="chk" data-act="chk" aria-label="подход выполнен">✓</button></div>`;
+
+function setRow(wid, exId, i, s, ex) {
+  const sec = ex.unit === 'sec'; const wt = !!ex.weighted;
+  const run = RT && RT.w === wid && RT.exId === exId && RT.i === i;
+  return `<div class="srow ${s.done ? 'on' : ''} ${wt ? '' : 'nw'} ${run ? 'run' : ''}" data-w="${esc(wid)}" data-e="${esc(exId)}" data-i="${i}">
+    <span class="num">${i + 1}</span>
+    ${wt ? `<label class="pillin"><input inputmode="decimal" data-f="kg" value="${esc(s.kg)}" placeholder="0" aria-label="вес, кг"><u>кг</u></label>` : ''}
+    <label class="pillin"><input inputmode="numeric" data-f="reps" value="${esc(s.reps)}" placeholder="${esc(phOf(ex))}" aria-label="${sec ? 'секунды' : 'повторы'}">${sec ? '<u>сек</u><span class="cd">0:00</span><button type="button" class="pt" data-act="tm" aria-label="таймер">' + ic('play') + ic('stop') + '</button>' : ''}</label>
+    <button class="chk" data-act="chk" aria-label="подход выполнен">${ic('check')}</button></div>`;
+}
+
+function viewStep(wid, idxRaw) {
+  const w = workoutById(wid); if (!w) return '<p class="pad">Тренировка не найдена.</p>';
+  const flat = workoutGroups(w).flat(); const idx = Math.max(0, Math.min(flat.length - 1, +idxRaw || 0));
+  const exId = flat[idx]; const ex = P.exercises[exId];
+  if (!ex) return '<p class="pad">Упражнение не найдено.</p>';
+  const n = nSets(w, exId); const arr = getSets(w.id, exId, n);
+  const sess = getSession(w.id, false);
+  const sec = ex.unit === 'sec'; const wt = !!ex.weighted;
+  let h = `<div class="screen"><div class="top3"><a class="rbtn" href="#/w/${esc(w.id)}" aria-label="к списку">${ic('back')}</a>
+    ${ringHTML(ex, exFrac(w, exId), 104)}
+    <div class="rt"><button class="rbtn" data-act="resttimer" aria-label="таймер отдыха">${ic('timer')}</button><button class="rbtn" data-act="panel" data-k="settings" aria-label="настройки">${ic('sliders')}</button></div></div>
+    <h1 class="exname">${esc(ex.name)}</h1><div class="exsub">${esc(ex.muscles)}</div>
+    <div class="trio"><button class="${panel === 'tech' ? 'on' : ''}" data-act="panel" data-k="tech">${ic('play')}<span>Техника</span></button>
+      <button class="${panel === 'hist' ? 'on' : ''}" data-act="panel" data-k="hist">${ic('history')}<span>История</span></button>
+      <button class="${panel === 'swap' ? 'on' : ''}" data-act="panel" data-k="swap">${ic('swap')}<span>Заменить</span></button></div>`;
+  if (panel === 'settings') h += settingsPanel(w);
+  if (panel === 'tech') h += `<div class="panel">${videoHTML(ex)}${tipsHTML(ex)}</div>`;
+  if (panel === 'hist') {
+    const rows = [];
+    Object.keys(DB.logs).sort().reverse().forEach((d) => Object.values(DB.logs[d]).forEach((s) => {
+      const a = s.sets && s.sets[exId];
+      if (a && a.some((x) => x.done)) rows.push(`<tr><td>${shortDate(d)}</td><td>${a.filter((x) => x.done).map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}${sec ? ' сек' : ''}</td></tr>`);
+    }));
+    h += `<div class="panel"><h3>История</h3>${rows.length ? `<table>${rows.slice(0, 15).join('')}</table>` : '<p class="muted">Пока записей нет. Они появятся после первых отмеченных подходов.</p>'}</div>`;
+  }
+  if (panel === 'swap') {
+    const inW = new Set(flat);
+    const opts = Object.entries(P.exercises).filter(([id]) => !inW.has(id));
+    const orig = Object.keys(swapsOf(w)).find((k) => swapsOf(w)[k] === exId);
+    h += `<div class="panel"><h3>Заменить упражнение</h3>${opts.map(([id, e]) => `<button class="opt" data-act="swapto" data-id="${esc(id)}" data-cur="${esc(exId)}">${ringHTML(e, 0, 40)}<span class="grow"><b>${esc(e.name)}</b><small>${esc(e.muscles)}</small></span></button>`).join('') || '<p class="muted">Других упражнений пока нет.</p>'}
+      ${orig ? `<button class="opt" data-act="swapback" data-orig="${esc(orig)}"><span class="grow"><b>Вернуть «${esc((P.exercises[orig] || {}).name || orig)}»</b></span></button>` : ''}</div>`;
+  }
+  h += `<div class="cols">${wt ? '<span>Вес</span>' : ''}<span>${sec ? 'Секунды' : 'Повторения'}</span></div>`;
+  h += '<div class="srows">' + arr.map((s, i) => setRow(w.id, exId, i, s, ex)).join('') + '</div>';
+  h += `<button class="addset" data-act="addset" data-w="${esc(w.id)}" data-e="${esc(exId)}"><span class="rbtn">${ic('plus')}</span><b>Ещё подход</b></button>`;
+  const note = (sess && sess.notes && sess.notes[exId]) || '';
+  h += `<textarea class="note" rows="3" placeholder="Оставить заметку…" data-w="${esc(w.id)}" data-e="${esc(exId)}">${esc(note)}</textarea></div>`;
+  // нижняя полоса
+  const prev = idx > 0 ? `#/w/${esc(w.id)}/${idx - 1}` : `#/w/${esc(w.id)}`;
+  const nx = flat[idx + 1] && P.exercises[flat[idx + 1]];
+  const fin = sess && sess.finished;
+  h += `<div class="botbar"><a class="rbtn" href="${prev}" aria-label="назад">${ic(idx > 0 ? 'prev' : 'list')}</a>`;
+  if (nx) h += `<a class="nextp" href="#/w/${esc(w.id)}/${idx + 1}">${ringHTML(nx, 0, 40)}<span class="grow"><b>${esc(nx.name)}</b><small>Далее</small></span>${ic('next')}</a>`;
+  else h += `<button class="nextp lime" data-act="finish" data-w="${esc(w.id)}"><span class="grow"><b>${fin ? 'Тренировка завершена ✓' : 'Завершить тренировку'}</b><small>последнее упражнение</small></span>${ic('check')}</button>`;
+  return h + '</div>';
 }
 
 function viewExercise(id) {
   const ex = P.exercises[id];
   if (!ex) return '<p class="pad">Упражнение не найдено.</p>';
-  let h = `<a href="#/train" data-act="back">← Назад</a><h1>${esc(ex.name)}</h1><div class="muted">${esc(ex.muscles)} · ${esc(ex.target)}</div>
+  let h = `<a href="#/lib" data-act="back">← Назад</a><div class="center">${ringHTML(ex, 0, 104)}</div><h1 class="exname">${esc(ex.name)}</h1><div class="exsub">${esc(ex.muscles)} · ${esc(ex.target)}</div>
     ${videoHTML(ex)}<div class="card">${tipsHTML(ex)}</div>`;
   const rows = [];
   Object.keys(DB.logs).sort().reverse().forEach((d) => Object.values(DB.logs[d]).forEach((s) => {
@@ -461,6 +569,7 @@ function viewReport() {
 function viewMore() {
   const ts = (k) => esc(localStorage.getItem(k) || '');
   return `<h1>Ещё</h1>
+  <a class="card" style="display:flex;justify-content:space-between;color:inherit;text-decoration:none" href="#/lib"><b>Библиотека упражнений</b><span class="chev">›</span></a>
   <div class="card"><h3>Обновления</h3><p class="muted small">Тренировки, питание и видео подтягиваются из репозитория автоматически при открытии приложения. Пересобирать и переустанавливать ничего не нужно.</p>
     <p>Версия контента: <b>${esc(P.version)}</b> от ${esc(P.updated)}<br>Питание: <b>${esc(N.version)}</b> от ${esc(N.updated)}</p>
     <button class="block" data-act="update">Проверить обновления</button></div>
@@ -481,11 +590,15 @@ function render(keepScroll) {
   const parts = h.replace(/^#\/?/, '').split('/');
   const r = parts[0] || '', a = parts[1];
   let html = '', tab = 'today';
+  const rk = parts.slice(0, 3).join('/');
+  if (rk !== lastRoute) { panel = null; lastRoute = rk; }
+  document.body.dataset.r = r;
   try {
     if (r === '') html = viewToday();
-    else if (r === 'train') { html = viewTrain(); tab = 'train'; }
-    else if (r === 'w') { html = viewWorkout(a); tab = 'train'; }
-    else if (r === 'ex') { html = viewExercise(a); tab = 'train'; }
+    else if (r === 'train') { const dw = defaultWorkout(); html = dw ? viewWorkout(dw.id) : viewToday(); tab = 'train'; }
+    else if (r === 'w') { html = parts[2] !== undefined && parts[2] !== '' ? viewStep(a, parts[2]) : viewWorkout(a); tab = 'train'; }
+    else if (r === 'lib') { html = viewLib(); tab = 'more'; }
+    else if (r === 'ex') { html = viewExercise(a); tab = 'more'; }
     else if (r === 'food') { html = viewFood(); tab = 'food'; }
     else if (r === 'progress') { html = viewProgress(); tab = 'progress'; }
     else if (r === 'more') { html = viewMore(); tab = 'more'; }
@@ -509,41 +622,91 @@ async function keepAwake(on) {
   } catch (e) { /* не критично */ }
 }
 
+/* ---------- после подхода: сплит, отдых, таймер внутри строки ---------- */
+function afterSet(wid, exId, i) {
+  const wk = workoutById(wid), ex = P.exercises[exId]; if (!wk || !ex) return;
+  const groups = workoutGroups(wk); const flat = groups.flat();
+  const g = groups.find((x) => x.includes(exId)) || [exId];
+  const pos = g.indexOf(exId); const split = g.length > 1;
+  const hasRest = (wk.rounds || wk.restBetween) && ex.rest > 0;
+  const undone = (id) => getSets(wid, id, nSets(wk, id)).findIndex((x) => !x.done);
+  let go = null;
+  if (split) {
+    if (pos < g.length - 1) {
+      const nx = g[pos + 1]; const a = getSets(wid, nx, nSets(wk, nx));
+      if (a[i] && !a[i].done) { toast(`Дальше без отдыха: ${P.exercises[nx].name}`); go = flat.indexOf(nx); }
+    } else {
+      if (hasRest) startTimer(Math.max(...g.map((x) => P.exercises[x].rest || 0)), 'Отдых после пары');
+      const first = g.find((id) => undone(id) >= 0);
+      if (first) go = flat.indexOf(first);
+      else { const nxt = flat.indexOf(exId) + 1; go = nxt < flat.length ? nxt : 'list'; if (go === 'list') toast('Все подходы сделаны. Можно завершать'); }
+    }
+  } else if (hasRest) startTimer(ex.rest, 'Отдых после: ' + ex.name);
+  if (go != null && go !== -1) {
+    setTimeout(() => { if (location.hash.startsWith('#/w/' + wid + '/')) location.hash = go === 'list' ? '#/w/' + wid : `#/w/${wid}/${go}`; }, 650);
+  }
+}
+function startRowTimer(row) {
+  if (RT) { stopRowTimer(true); return; }
+  const { w, e: exId } = row.dataset; const i = +row.dataset.i; const ex = P.exercises[exId];
+  const total = num($('input[data-f="reps"]', row).value) || ex.def;
+  startSession(w);
+  RT = { w, exId, i, total, end: Date.now() + total * 1000, iv: setInterval(rowTick, 250) };
+  rowTick();
+}
+function rowTick() {
+  if (!RT) return;
+  const left = Math.ceil((RT.end - Date.now()) / 1000);
+  const row = $(`.srow[data-w="${RT.w}"][data-e="${RT.exId}"][data-i="${RT.i}"]`);
+  if (row) { row.classList.add('run'); const cd = $('.cd', row); if (cd) cd.textContent = fmtTime(Math.max(0, left)); }
+  if (left <= 0) stopRowTimer(false);
+}
+function stopRowTimer(early) {
+  const r = RT; if (!r) return; clearInterval(r.iv); RT = null;
+  const secs = early ? Math.max(1, Math.round(r.total - (r.end - Date.now()) / 1000)) : r.total;
+  const wk = workoutById(r.w); const arr = getSets(r.w, r.exId, nSets(wk, r.exId));
+  arr[r.i].reps = String(secs); arr[r.i].done = true; save(); beep(); render(true);
+  afterSet(r.w, r.exId, r.i);
+}
+
 /* ---------- события ---------- */
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (act === 'back') { e.preventDefault(); if (history.length > 1) history.back(); else location.hash = '#/train'; return; }
   if (act === 'chk') {
-    const row = el.closest('.set'); const { w, e: exId } = row.dataset; const i = +row.dataset.i;
+    const row = el.closest('.srow'); const { w, e: exId } = row.dataset; const i = +row.dataset.i;
     const ex = P.exercises[exId]; const wk = workoutById(w);
-    const arr = getSets(w, exId, setsCount(wk, exId)); const s = arr[i];
-    const inp = $('input[data-f="reps"]', row);
+    const arr = getSets(w, exId, nSets(wk, exId)); const s = arr[i];
     s.done = !s.done;
-    if (s.done && !String(s.reps).trim()) { s.reps = String(ex.def); inp.value = s.reps; }
-    row.classList.toggle('on', s.done);
+    if (s.done && !String(s.reps).trim()) s.reps = String(ex.def);
     if (s.done) startSession(w);
-    save();
-    if (s.done) {
-      const g = workoutGroups(wk).find((x) => x.includes(exId)) || [exId];
-      const idx = g.indexOf(exId);
-      if (idx < g.length - 1) {
-        const nx = P.exercises[g[idx + 1]];
-        toast(`Дальше без отдыха: ${nx ? nx.name : ''}`);
-      } else if (wk.rounds && ex.rest > 0) {
-        const rest = Math.max(...g.map((x) => (P.exercises[x] ? P.exercises[x].rest : 0)));
-        startTimer(rest, g.length > 1 ? 'Отдых после пары' : 'Отдых после: ' + ex.name);
-      }
-    }
+    save(); render(true);
+    if (s.done) afterSet(w, exId, i);
     return;
   }
-  if (act === 'wstart') { startSession(el.dataset.w); render(true); return; }
+  if (act === 'wstart') { startSession(el.dataset.w); location.hash = `#/w/${el.dataset.w}/0`; return; }
   if (act === 'splitmode') { DB.settings.split = !DB.settings.split; save(); render(true); return; }
-  if (act === 'tm') {
-    const row = el.closest('.set'); const ex = P.exercises[row.dataset.e];
-    const v = num($('input[data-f="reps"]', row).value) || ex.def;
-    startTimer(v, ex.name); return;
+  if (act === 'panel') { panel = panel === el.dataset.k ? null : el.dataset.k; render(true); return; }
+  if (act === 'resttimer') {
+    if (T) { stopTimer(); return; }
+    const m = location.hash.match(/#\/w\/([^/]+)\/(\d+)/); const wk = m && workoutById(m[1]);
+    const exId = wk ? workoutGroups(wk).flat()[+m[2]] : null;
+    const ex = exId && P.exercises[exId];
+    startTimer((ex && ex.rest) || 60, 'Отдых'); return;
   }
+  if (act === 'addset') {
+    const s = getSession(el.dataset.w, true); s.extra = s.extra || {}; s.extra[el.dataset.e] = (s.extra[el.dataset.e] || 0) + 1;
+    save(); render(true); return;
+  }
+  if (act === 'swapto' || act === 'swapback') {
+    const m = location.hash.match(/#\/w\/([^/]+)\//); const wk = m && workoutById(m[1]); if (!wk) return;
+    DB.settings.swaps = DB.settings.swaps || {}; const sw = (DB.settings.swaps[wk.id] = DB.settings.swaps[wk.id] || {});
+    if (act === 'swapto') { const orig = Object.keys(sw).find((k) => sw[k] === el.dataset.cur) || el.dataset.cur; sw[orig] = el.dataset.id; }
+    else delete sw[el.dataset.orig];
+    panel = null; save(); render(true); toast('Упражнение заменено'); return;
+  }
+  if (act === 'tm') { e.preventDefault(); startRowTimer(el.closest('.srow')); return; }
   if (act === 'finish') {
     const s = getSession(el.dataset.w, true);
     if (!s.finished) {
@@ -582,9 +745,13 @@ document.addEventListener('click', (e) => {
 });
 // чекбоксы списка покупок срабатывают как click по input
 document.addEventListener('input', (e) => {
-  const inp = e.target; if (!inp.matches || !inp.matches('.set input')) return;
-  const row = inp.closest('.set'); const { w, e: exId } = row.dataset; const wk = workoutById(w);
-  const arr = getSets(w, exId, setsCount(wk, exId)); arr[+row.dataset.i][inp.dataset.f] = inp.value; save();
+  const inp = e.target; if (!inp.matches) return;
+  if (inp.matches('.srow input')) {
+    const row = inp.closest('.srow'); const { w, e: exId } = row.dataset; const wk = workoutById(w);
+    const arr = getSets(w, exId, nSets(wk, exId)); arr[+row.dataset.i][inp.dataset.f] = inp.value; save();
+  } else if (inp.matches('textarea.note')) {
+    const s = getSession(inp.dataset.w, true); s.notes = s.notes || {}; s.notes[inp.dataset.e] = inp.value; save();
+  }
 });
 document.addEventListener('change', (e) => {
   if (e.target.id === 'imp') importData(e.target.files[0]);
