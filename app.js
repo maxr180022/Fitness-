@@ -86,6 +86,14 @@ function getSession(wid, create) {
   if (!DB.logs[d][wid]) { if (!create) return null; DB.logs[d][wid] = { sets: {}, finished: false }; }
   return DB.logs[d][wid];
 }
+function baseOf(id) { const e = P && P.exercises && P.exercises[id]; return (e && e.base) || 0; }
+function fmtKgNum(n) { return String(Math.round(n * 100) / 100).replace('.', ','); }
+function kgPre(id, kg) {
+  const b = baseOf(id);
+  if (!b) return kg ? `${kg} кг × ` : '';
+  const k = parseFloat(String(kg).replace(',', '.'));
+  return `${fmtKgNum((isNaN(k) ? 0 : k) + b)} кг × `;
+}
 function getSets(wid, exId, n) {
   const s = getSession(wid, true);
   if (!s.sets[exId]) s.sets[exId] = [];
@@ -106,7 +114,7 @@ function lastTime(exId, wid) {
     for (const [k, sess] of Object.entries(DB.logs[d])) {
       const arr = sess.sets && sess.sets[exId];
       if (arr && arr.some((s) => s.done)) {
-        const parts = arr.filter((s) => s.done).map((s) => (s.kg ? `${s.kg} кг × ` : '') + s.reps);
+        const parts = arr.filter((s) => s.done).map((s) => kgPre(exId, s.kg) + s.reps);
         return `${shortDate(d)}: ${parts.join(', ')}`;
       }
     }
@@ -365,7 +373,7 @@ function setRow(wid, exId, i, s, ex) {
   const run = RT && RT.w === wid && RT.exId === exId && RT.i === i;
   return `<div class="srow ${s.done ? 'on' : ''} ${wt ? '' : 'nw'} ${run ? 'run' : ''}" data-w="${esc(wid)}" data-e="${esc(exId)}" data-i="${i}">
     <span class="num">${i + 1}</span>
-    ${wt ? `<label class="pillin"><input inputmode="decimal" data-f="kg" value="${esc(s.kg)}" placeholder="0" aria-label="вес, кг"><u>кг</u></label>` : ''}
+    ${wt ? `<label class="pillin"><input inputmode="decimal" data-f="kg" value="${esc(s.kg)}" placeholder="0" aria-label="вес блинов, кг"><u>${baseOf(exId) ? '+' + fmtKgNum(baseOf(exId)) : 'кг'}</u></label>` : ''}
     <label class="pillin"><input inputmode="numeric" data-f="reps" value="${esc(s.reps)}" placeholder="${esc(phOf(ex))}" aria-label="${sec ? 'секунды' : 'повторы'}">${sec ? '<u>сек</u><span class="cd">0:00</span><button type="button" class="pt" data-act="tm" aria-label="таймер">' + ic('play') + ic('stop') + '</button>' : ''}</label>
     <button class="chk" data-act="chk" aria-label="подход выполнен">${ic('check')}</button></div>`;
 }
@@ -391,7 +399,7 @@ function viewStep(wid, idxRaw) {
     const rows = [];
     Object.keys(DB.logs).sort().reverse().forEach((d) => Object.values(DB.logs[d]).forEach((s) => {
       const a = s.sets && s.sets[exId];
-      if (a && a.some((x) => x.done)) rows.push(`<tr><td>${shortDate(d)}</td><td>${a.filter((x) => x.done).map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}${sec ? ' сек' : ''}</td></tr>`);
+      if (a && a.some((x) => x.done)) rows.push(`<tr><td>${shortDate(d)}</td><td>${a.filter((x) => x.done).map((x) => kgPre(exId, x.kg) + x.reps).join(', ')}${sec ? ' сек' : ''}</td></tr>`);
     }));
     h += `<div class="panel"><h3>История</h3>${rows.length ? `<table>${rows.slice(0, 15).join('')}</table>` : '<p class="muted">Пока записей нет. Они появятся после первых отмеченных подходов.</p>'}</div>`;
   }
@@ -402,7 +410,8 @@ function viewStep(wid, idxRaw) {
     h += `<div class="panel"><h3>Заменить упражнение</h3>${opts.map(([id, e]) => `<button class="opt" data-act="swapto" data-id="${esc(id)}" data-cur="${esc(exId)}">${ringHTML(e, 0, 34)}<span class="grow"><b>${esc(e.name)}</b><small>${esc(e.muscles)}</small></span></button>`).join('') || '<p class="muted">Других упражнений пока нет.</p>'}
       ${orig ? `<button class="opt" data-act="swapback" data-orig="${esc(orig)}"><span class="grow"><b>Вернуть «${esc((P.exercises[orig] || {}).name || orig)}»</b></span></button>` : ''}</div>`;
   }
-  h += `<div class="cols">${wt ? '<span>Вес</span>' : ''}<span>${sec ? 'Секунды' : 'Повторения'}</span></div>`;
+  h += `<div class="cols">${wt ? `<span>${baseOf(exId) ? 'Блины' : 'Вес'}</span>` : ''}<span>${sec ? 'Секунды' : 'Повторения'}</span></div>`;
+  if (baseOf(exId)) h += `<p class="muted small" style="margin:0 6px 8px">Вводи только вес блинов: ${esc(ex.baseNote)} прибавится сам${exId === 'rdl' || exId === 'row' ? '. Блины считай всего на грифе' : '. Вес одной гантели'}.</p>`;
   h += '<div class="srows">' + arr.map((s, i) => setRow(w.id, exId, i, s, ex)).join('') + '</div>';
   h += `<button class="addset" data-act="addset" data-w="${esc(w.id)}" data-e="${esc(exId)}"><span class="rbtn">${ic('plus')}</span><b>Ещё подход</b></button>`;
   const note = (sess && sess.notes && sess.notes[exId]) || '';
@@ -425,7 +434,7 @@ function viewExercise(id) {
   const rows = [];
   Object.keys(DB.logs).sort().reverse().forEach((d) => Object.values(DB.logs[d]).forEach((s) => {
     const arr = s.sets && s.sets[id];
-    if (arr && arr.some((x) => x.done)) rows.push(`<tr><td>${shortDate(d)}</td><td>${arr.filter((x) => x.done).map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}</td></tr>`);
+    if (arr && arr.some((x) => x.done)) rows.push(`<tr><td>${shortDate(d)}</td><td>${arr.filter((x) => x.done).map((x) => kgPre(id, x.kg) + x.reps).join(', ')}</td></tr>`);
   }));
   if (rows.length) h += `<h2>История</h2><div class="card"><table>${rows.slice(0, 15).join('')}</table></div>`;
   return h;
@@ -523,7 +532,7 @@ function viewProgress() {
   if (bk.length) {
     h += `<div class="card"><h3>Лучшие результаты</h3><table>${bk.map((e) => {
       const ex = P.exercises[e]; const b = best[e]; if (!ex) return '';
-      return `<tr><td>${esc(ex.name)}</td><td>${b.kg ? b.kg + ' кг × ' : ''}${b.reps} ${ex.unit === 'sec' ? 'сек' : 'повт.'}</td></tr>`;
+      return `<tr><td>${esc(ex.name)}</td><td>${kgPre(e, b.kg)}${b.reps} ${ex.unit === 'sec' ? 'сек' : 'повт.'}</td></tr>`;
     }).join('')}</table></div>`;
   }
   return h;
@@ -558,7 +567,7 @@ function viewReport() {
     const w = workoutById(wid); const secs = sessionSeconds(s);
     h += `<div class="card"><h3>${shortDate(d)} · ${esc(w ? w.title : wid)}${s.finished && secs ? ' · ' + fmtLong(secs) : ''}</h3><table><tr><th>Упражнение</th><th>Подходы</th></tr>${Object.entries(s.sets).filter(([, a]) => a.some((x) => x.done)).map(([e, a]) => {
       const ex = P.exercises[e];
-      return `<tr><td>${esc(ex ? ex.name : e)}</td><td>${a.filter((x) => x.done).map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}</td></tr>`;
+      return `<tr><td>${esc(ex ? ex.name : e)}</td><td>${a.filter((x) => x.done).map((x) => kgPre(e, x.kg) + x.reps).join(', ')}</td></tr>`;
     }).join('')}</table></div>`;
   }));
   if (!any) h += '<p class="muted small">Записей пока нет.</p>';
@@ -800,7 +809,7 @@ function journalText() {
     Object.entries(s.sets).forEach(([e, a]) => {
       const done = a.filter((x) => x.done); if (!done.length) return;
       const ex = P.exercises[e];
-      lines.push(`- ${ex ? ex.name : e}: ${done.map((x) => (x.kg ? x.kg + ' кг × ' : '') + x.reps).join(', ')}${ex && ex.unit === 'sec' ? ' сек' : ''}`);
+      lines.push(`- ${ex ? ex.name : e}: ${done.map((x) => kgPre(e, x.kg) + x.reps).join(', ')}${ex && ex.unit === 'sec' ? ' сек' : ''}`);
     });
   }));
   const ms = [...DB.measures].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
