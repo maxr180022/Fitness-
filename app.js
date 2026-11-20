@@ -40,7 +40,81 @@ function loadDB() {
 }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) { toast('Не удалось сохранить данные'); }
+  scheduleSync();
 }
+
+/* ---------- копия журнала на сервере (приватный репозиторий GitHub) ---------- */
+const SYNC_KEY = 'fit.sync', SYNC_FILE = 'fitness.json';
+let syncT = null, syncBusy = false;
+function syncCfg() { try { const c = JSON.parse(localStorage.getItem(SYNC_KEY)); return c && c.repo && c.token ? c : null; } catch (e) { return null; } }
+function syncStat() { try { return JSON.parse(localStorage.getItem('fit.syncstat')) || null; } catch (e) { return null; } }
+function syncStatText() {
+  const c = syncCfg(), st = syncStat();
+  if (!c) return 'Сервер не подключён: записи лежат только на телефоне.';
+  if (!st) return 'Подключено, ещё не сохраняли.';
+  const t = new Date(st.t), hm = `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+  return st.ok ? `Сохранено на сервере в ${hm}.` : `Не удалось (${hm}): ${st.msg}`;
+}
+function setSyncStat(ok, msg) {
+  try { localStorage.setItem('fit.syncstat', JSON.stringify({ t: Date.now(), ok, msg })); } catch (e) { /* ok */ }
+  const el = $('#sync-status'); if (el) el.textContent = syncStatText();
+}
+function b64enc(str) { const b = new TextEncoder().encode(str); let r = ''; b.forEach((x) => { r += String.fromCharCode(x); }); return btoa(r); }
+function b64dec(b) { const r = atob(String(b).replace(/\s/g, '')), u = new Uint8Array(r.length); for (let i = 0; i < r.length; i++) u[i] = r.charCodeAt(i); return new TextDecoder().decode(u); }
+// Слияние: ничего не удаляется. Из двух версий одного дня берётся та, где отмечено больше подходов.
+function mergeDB(remote) {
+  let changed = false; const r = remote || {};
+  Object.entries(r.logs || {}).forEach(([d, day]) => Object.entries(day || {}).forEach(([wid, sess]) => {
+    DB.logs[d] = DB.logs[d] || {};
+    const mine = DB.logs[d][wid];
+    if (!mine || doneCount(sess) > doneCount(mine)) { DB.logs[d][wid] = sess; changed = true; }
+  }));
+  const ids = new Set(DB.measures.map((m) => m.id));
+  (r.measures || []).forEach((m) => { if (!ids.has(m.id)) { DB.measures.push(m); changed = true; } });
+  Object.entries(r.water || {}).forEach(([d, v]) => { if (!(DB.water[d] >= v)) { DB.water[d] = v; changed = true; } });
+  Object.keys(r.shop || {}).forEach((k) => { if (!(k in DB.shop)) { DB.shop[k] = r.shop[k]; changed = true; } });
+  Object.keys(r.settings || {}).forEach((k) => { if (!(k in DB.settings)) { DB.settings[k] = r.settings[k]; changed = true; } });
+  return changed;
+}
+async function ghApi(cfg, method, body) {
+  const r = await fetch(`https://api.github.com/repos/${cfg.repo}/contents/${SYNC_FILE}${method === 'GET' ? '?t=' + Date.now() : ''}`, {
+    method, headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return r;
+}
+async function syncNow(manual) {
+  const cfg = syncCfg(); if (!cfg) { if (manual) toast('Сначала подключи сервер'); return; }
+  if (syncBusy) return; syncBusy = true;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let sha = null, remote = null;
+      const g = await ghApi(cfg, 'GET');
+      if (g.status === 401 || g.status === 403) throw new Error('токен не подходит или нет прав на запись');
+      if (g.status === 404) {
+        const t = await fetch(`https://api.github.com/repos/${cfg.repo}`, { headers: { Authorization: `Bearer ${cfg.token}` } });
+        if (t.status === 404) throw new Error('репозиторий не найден: проверь название и доступ токена');
+      } else if (g.ok) { const j = await g.json(); sha = j.sha; try { remote = JSON.parse(b64dec(j.content)).data; } catch (e) { remote = null; } }
+      else throw new Error('ошибка сервера ' + g.status);
+      if (remote && mergeDB(remote)) { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) { /* ok */ } if (!/^#\/w\/[^/]+\/\d/.test(location.hash)) render(true); }
+      if (remote && JSON.stringify(remote) === JSON.stringify(DB)) { setSyncStat(true); return; }
+      const p = await ghApi(cfg, 'PUT', {
+        message: `Журнал ${dateStr()} ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`,
+        content: b64enc(JSON.stringify({ app: 'fitness', savedAt: new Date().toISOString(), data: DB }, null, 1)), sha: sha || undefined,
+      });
+      if (p.status === 409 || p.status === 422) continue;
+      if (p.status === 401 || p.status === 403 || p.status === 404) throw new Error('нет прав на запись в репозиторий');
+      if (!p.ok) throw new Error('ошибка сервера ' + p.status);
+      setSyncStat(true); if (manual) toast('Сохранено на сервере'); return;
+    }
+    throw new Error('конфликт версий, попробуй ещё раз');
+  } catch (e) {
+    setSyncStat(false, /Failed to fetch|Network/i.test(String(e.message)) ? 'нет связи' : e.message);
+    if (manual) toast('Не получилось: ' + (syncStat() || {}).msg);
+  } finally { syncBusy = false; }
+}
+function scheduleSync(ms) { if (!syncCfg()) return; clearTimeout(syncT); syncT = setTimeout(() => syncNow(false), ms == null ? 20000 : ms); }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') scheduleSync(300); });
 
 /* ---------- загрузка контента ---------- */
 async function getJSON(path) {
@@ -521,7 +595,7 @@ function viewProgress() {
     if (w) w.items.forEach((e) => { total += setsCount(w, e); });
     const secs = sessionSeconds(s); hist.push(`<tr><td>${shortDate(d)}</td><td>${esc(w ? w.title : wid)}</td><td>${dc}${total ? ' / ' + total : ''}</td><td>${secs && s.finished ? fmtLong(secs) : ''}</td><td><button class="ghost" style="padding:4px 8px" data-act="story" data-w="${esc(wid)}" data-d="${esc(d)}" aria-label="картинка для сторис">▶</button></td></tr>`);
   }));
-  h += `<div class="card"><h3>История тренировок</h3>${hist.length ? `<table><tr><th>Дата</th><th>Тренировка</th><th>Подходов</th><th>Время</th><th></th></tr>${hist.slice(0, 30).join('')}</table>` : '<p class="muted small">Пока пусто: сделай первую тренировку.</p>'}</div>`;
+  h += `<div class="card"><h3>История тренировок</h3>${hist.length ? `<table><tr><th>Дата</th><th>Тренировка</th><th>Подходов</th><th>Время</th><th></th></tr>${hist.join('')}</table>` : '<p class="muted small">Пока пусто: сделай первую тренировку.</p>'}</div>`;
   // рекорды
   const best = {};
   Object.values(DB.logs).forEach((day) => Object.values(day).forEach((s) => Object.entries(s.sets || {}).forEach(([e, arr]) => arr.forEach((x) => {
@@ -590,6 +664,12 @@ function viewMore() {
     <button class="block" data-act="offline">Скачать все видео</button><p class="muted small" id="off-status"></p></div>
   <div class="card"><h3>Установка на телефон</h3>${installEvt ? '<button class="primary block" data-act="install">Установить приложение</button>' : ''}
     <p class="muted small">Chrome на Android: меню ⋮ → «Установить приложение» (или «Добавить на главный экран»). После этого иконка «Фитнес» появится среди приложений.</p></div>
+  <div class="card"><h3>Копия на сервере</h3><p class="muted small">Журнал сам сохраняется в твой закрытый репозиторий на GitHub: после тренировки и при выходе из приложения. Если приложение удалят, записи вернутся. Ничего не стирается: версии дней сливаются.</p>
+    <label class="f">Репозиторий (владелец/название)</label><input id="sy-repo" placeholder="maxr180022/fitness-data" value="${esc((syncCfg() || {}).repo || '')}" autocapitalize="off" autocomplete="off">
+    <label class="f">Токен доступа</label><input id="sy-token" type="password" placeholder="${syncCfg() ? 'сохранён, оставь пустым' : 'github_pat_…'}" autocomplete="off">
+    <button class="primary block" style="margin-top:10px" data-act="syncsave">Подключить и сохранить</button>
+    <button class="block" style="margin-top:8px" data-act="syncnow">Сохранить сейчас</button>
+    <p class="muted small" id="sync-status">${esc(syncStatText())}</p></div>
   <div class="card"><h3>Резервная копия</h3><p class="muted small">Подходы, замеры и отметки хранятся только на этом телефоне. Сохрани копию, чтобы не потерять данные при смене телефона или очистке браузера.</p>
     <button class="block" data-act="export">Скачать копию данных</button>
     <label class="f">Восстановить из файла</label><input type="file" id="imp" accept="application/json,.json"></div>
@@ -728,7 +808,7 @@ document.addEventListener('click', (e) => {
       const end = s.lastAt && now - s.lastAt > 10 * 60 * 1000 ? s.lastAt : now;
       s.finished = true; s.endedAt = end;
       s.durationSec = s.startedAt ? Math.max(0, Math.round((end - s.startedAt) / 1000)) : null;
-      stopTimer(); save();
+      stopTimer(); save(); scheduleSync(1500);
       toast(s.durationSec ? `День закончен: ${fmtLong(s.durationSec)}, подходов ${doneCount(s)}. Хорошая работа! Внизу кнопка для сторис` : `День закончен, подходов ${doneCount(s)}. Хорошая работа! Внизу кнопка для сторис`);
     } else { s.finished = false; s.endedAt = null; s.durationSec = null; save(); toast('Отметка снята, день снова открыт'); }
     render(true); return;
@@ -755,13 +835,20 @@ document.addEventListener('click', (e) => {
   if (act === 'export') { exportData(); return; }
   if (act === 'print') { window.print(); return; }
   if (act === 'sharetext') { shareText(); return; }
+  if (act === 'syncnow') { syncNow(true); return; }
+  if (act === 'syncsave') {
+    const old = syncCfg() || {}, repo = ($('#sy-repo').value || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, ''), token = ($('#sy-token').value || '').trim() || old.token;
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { toast('Репозиторий вида владелец/название'); return; }
+    if (!token) { toast('Вставь токен'); return; }
+    localStorage.setItem(SYNC_KEY, JSON.stringify({ repo, token })); $('#sy-token').value = ''; syncNow(true); return;
+  }
   if (act === 'story') { openStory(el.dataset.w, el.dataset.d); return; }
   if (act === 'storyshare') { shareStory(); return; }
   if (act === 'storysave') { saveStory(); return; }
   if (act === 'storyclose') { closeStory(); return; }
   if (act === 'sharefile') { shareFile(); return; }
   if (act === 'reset') {
-    if (confirm('Удалить все подходы, замеры и отметки на этом телефоне? Это нельзя отменить.')) { DB = blank(); save(); toast('Данные удалены'); render(); }
+    if (confirm('Удалить все подходы, замеры и отметки на этом телефоне? Если подключена копия на сервере, записи оттуда вернутся.')) { DB = blank(); save(); toast('Данные удалены'); render(); }
   }
 });
 // чекбоксы списка покупок срабатывают как click по input
@@ -1085,6 +1172,7 @@ async function init() {
     return;
   }
   render();
+  scheduleSync(2500);
   if ('serviceWorker' in navigator) {
     let had = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) toast('Приложение обновлено'); had = true; });
