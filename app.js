@@ -18,6 +18,13 @@ let DB = loadDB();
 let P = null; // программа
 let N = null; // питание
 let foodTab = 'menu';
+let foodWeek = 0;
+function cycleWeek(d = new Date()) {
+  const a = new Date(2026, 10, 16), x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const n = Math.floor(Math.round((x - a) / 86400000) / 7);
+  return ((n % 2) + 2) % 2 + 1;
+}
+function menuFor(wd, wk) { return (N.menu || []).find((x) => [].concat(x.weekday).includes(wd) && (x.week === 0 || x.week === wk)); }
 let installEvt = null;
 let swReg = null;
 let wakeLock = null;
@@ -202,7 +209,7 @@ function viewToday() {
     h += `<div class="card"><h3>Сегодня без силовой</h3><p class="muted">День восстановления: прогулка и лёгкая растяжка по желанию.</p></div>`;
   }
   // питание сегодня
-  const m = (N.menu || []).find((x) => [].concat(x.weekday).includes(wd));
+  const m = menuFor(wd, cycleWeek());
   const water = DB.water[dateStr()] || 0, goal = N.targets.waterGoalMl;
   h += `<div class="card"><div class="row between"><h3>Питание сегодня</h3><a href="#/food">всё меню</a></div>`;
   if (m) h += `<table>${m.meals.map(([a, b]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</table>`;
@@ -433,8 +440,10 @@ function viewFood() {
     h += `<div class="card"><h3>Цели на день</h3><table><tr><th>Калории</th><td>~${esc(t.kcal)} ккал</td></tr>
       <tr><th>Белок</th><td>${esc(t.protein)}</td></tr><tr><th>Баланс</th><td>${esc(t.split)}</td></tr>
       <tr><th>Вода</th><td>${esc(t.water)}</td></tr></table><p class="muted small">${esc(t.note)}</p></div>`;
-    N.menu.forEach((m) => {
-      const today = [].concat(m.weekday).includes(wd);
+    const cw = cycleWeek(), fw = foodWeek || cw;
+    h += `<div class="tabs">${[1, 2].map((k) => `<button data-act="fweek" data-k="${k}" class="${fw === k ? 'on' : ''}">Неделя ${k}${cw === k ? ' · сейчас' : ''}</button>`).join('')}</div>`;
+    N.menu.filter((m) => m.week === 0 || m.week === fw).forEach((m) => {
+      const today = fw === cw && [].concat(m.weekday).includes(wd);
       h += `<div class="card ${today ? 'accent' : ''}"><div class="row between"><h3>${esc(m.day)}</h3><span class="tag ${today ? 'acc' : ''}">${today ? 'сегодня · ' : ''}${esc(m.kcal)} ккал · ${esc(m.protein)}</span></div>
         <table>${m.meals.map(([a, b]) => `<tr><th>${esc(a)}</th><td>${esc(b)}</td></tr>`).join('')}</table></div>`;
     });
@@ -720,6 +729,7 @@ document.addEventListener('click', (e) => {
   if (act === 'water') {
     const d = dateStr(); DB.water[d] = Math.max(0, (DB.water[d] || 0) + parseInt(el.dataset.ml, 10)); save(); render(true); return;
   }
+  if (act === 'fweek') { foodWeek = +el.dataset.k; render(true); return; }
   if (act === 'ftab') { foodTab = el.dataset.k; render(true); return; }
   if (act === 'shop') { DB.shop[el.dataset.id] = el.checked; save(); render(true); return; }
   if (act === 'shopreset') { DB.shop = {}; save(); render(true); return; }
