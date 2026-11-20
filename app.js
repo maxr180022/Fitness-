@@ -1059,9 +1059,11 @@ async function openStory(wid, d) {
   const el = document.createElement('div'); el.id = 'story'; el.className = 'story';
   el.innerHTML = `<div class="storybox"><img src="${storyUrl}" alt="Картинка для сторис"><div class="storybtns">
     <button class="primary" data-act="storyshare">Поделиться в Instagram</button>
-    <button data-act="storysave">Сохранить</button><button class="ghost" data-act="storyclose">Закрыть</button></div></div>`;
+    ${isNativeApp() ? '<p class="muted small" style="flex:1 1 100%;text-align:center;margin:0">В меню выбери Instagram → «История». Чтобы сохранить в галерею, выбери «Фото» или «Файлы».</p>' : '<button data-act="storysave">Сохранить</button>'}
+    <button class="ghost" data-act="storyclose">Закрыть</button></div></div>`;
   document.body.appendChild(el);
 }
+function isNativeApp() { try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) { return false; } }
 function closeStory() {
   const el = $('#story'); if (el) el.remove();
   if (storyUrl) { URL.revokeObjectURL(storyUrl); storyUrl = null; } storyBlob = null;
@@ -1086,6 +1088,7 @@ async function shareStory() {
     const file = new File([storyBlob], name, { type: 'image/png' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Моя тренировка' }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
+  if (isNativeApp()) { toast('Не открылось меню «Поделиться». Обнови приложение с GitHub и попробуй снова'); return; }
   saveStory();
 }
 function saveStory() {
