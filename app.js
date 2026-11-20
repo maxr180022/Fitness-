@@ -362,7 +362,7 @@ function viewWorkout(id) {
   const t = started ? fmtTime(sessionSeconds(sess)) : '';
   const hasSets = doneCount(sess) > 0;
   const dur = sessionSeconds(sess);
-  if (finished) h += `<button class="fab done" data-act="finish" data-w="${esc(w.id)}">${ic('check')}<span>День закончен${dur ? ' · ' + esc(fmtLong(dur)) : ''}</span></button>`;
+  if (finished) h += `<div class="fabs"><button class="fab" data-act="story" data-w="${esc(w.id)}"><span>Картинка для сторис</span></button><button class="fab done" data-act="finish" data-w="${esc(w.id)}">${ic('check')}<span>${dur ? esc(fmtLong(dur)) : 'Готово'}</span></button></div>`;
   else if (started || hasSets) h += `<div class="fabs"><a class="fab ghost" href="#/w/${esc(w.id)}/0"><span>Продолжить</span></a><button class="fab" data-act="finish" data-w="${esc(w.id)}"><span>Закончить день${started ? ' · <b id="wclock" data-w="' + esc(w.id) + '">' + t + '</b>' : ''}</span></button></div>`;
   else h += `<button class="fab" data-act="wstart" data-w="${esc(w.id)}"><span>Начать ${isCore ? 'блок' : 'день ' + esc(w.short || '')}</span></button>`;
   return h;
@@ -519,9 +519,9 @@ function viewProgress() {
     const dc = doneCount(s); if (!dc) return;
     const w = workoutById(wid); let total = 0;
     if (w) w.items.forEach((e) => { total += setsCount(w, e); });
-    const secs = sessionSeconds(s); hist.push(`<tr><td>${shortDate(d)}</td><td>${esc(w ? w.title : wid)}</td><td>${dc}${total ? ' / ' + total : ''}</td><td>${secs && s.finished ? fmtLong(secs) : ''}</td></tr>`);
+    const secs = sessionSeconds(s); hist.push(`<tr><td>${shortDate(d)}</td><td>${esc(w ? w.title : wid)}</td><td>${dc}${total ? ' / ' + total : ''}</td><td>${secs && s.finished ? fmtLong(secs) : ''}</td><td><button class="ghost" style="padding:4px 8px" data-act="story" data-w="${esc(wid)}" data-d="${esc(d)}" aria-label="картинка для сторис">▶</button></td></tr>`);
   }));
-  h += `<div class="card"><h3>История тренировок</h3>${hist.length ? `<table><tr><th>Дата</th><th>Тренировка</th><th>Подходов</th><th>Время</th></tr>${hist.slice(0, 30).join('')}</table>` : '<p class="muted small">Пока пусто: сделай первую тренировку.</p>'}</div>`;
+  h += `<div class="card"><h3>История тренировок</h3>${hist.length ? `<table><tr><th>Дата</th><th>Тренировка</th><th>Подходов</th><th>Время</th><th></th></tr>${hist.slice(0, 30).join('')}</table>` : '<p class="muted small">Пока пусто: сделай первую тренировку.</p>'}</div>`;
   // рекорды
   const best = {};
   Object.values(DB.logs).forEach((day) => Object.values(day).forEach((s) => Object.entries(s.sets || {}).forEach(([e, arr]) => arr.forEach((x) => {
@@ -729,7 +729,7 @@ document.addEventListener('click', (e) => {
       s.finished = true; s.endedAt = end;
       s.durationSec = s.startedAt ? Math.max(0, Math.round((end - s.startedAt) / 1000)) : null;
       stopTimer(); save();
-      toast(s.durationSec ? `День закончен: ${fmtLong(s.durationSec)}, подходов ${doneCount(s)}. Хорошая работа!` : `День закончен, подходов ${doneCount(s)}. Хорошая работа!`);
+      toast(s.durationSec ? `День закончен: ${fmtLong(s.durationSec)}, подходов ${doneCount(s)}. Хорошая работа! Внизу кнопка для сторис` : `День закончен, подходов ${doneCount(s)}. Хорошая работа! Внизу кнопка для сторис`);
     } else { s.finished = false; s.endedAt = null; s.durationSec = null; save(); toast('Отметка снята, день снова открыт'); }
     render(true); return;
   }
@@ -755,6 +755,10 @@ document.addEventListener('click', (e) => {
   if (act === 'export') { exportData(); return; }
   if (act === 'print') { window.print(); return; }
   if (act === 'sharetext') { shareText(); return; }
+  if (act === 'story') { openStory(el.dataset.w, el.dataset.d); return; }
+  if (act === 'storyshare') { shareStory(); return; }
+  if (act === 'storysave') { saveStory(); return; }
+  if (act === 'storyclose') { closeStory(); return; }
   if (act === 'sharefile') { shareFile(); return; }
   if (act === 'reset') {
     if (confirm('Удалить все подходы, замеры и отметки на этом телефоне? Это нельзя отменить.')) { DB = blank(); save(); toast('Данные удалены'); render(); }
@@ -819,6 +823,183 @@ function journalText() {
   }
   return lines.join('\n');
 }
+/* ---------- картинка для сторис ---------- */
+const STORY_BODY_KG = 60;   // примерный вес тела для оценки калорий
+const STORY_MET = 4;        // силовая тренировка средней интенсивности
+const MONTH_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const MILESTONES = [1, 5, 10, 25, 50, 75, 100, 150, 200];
+let storyUrl = null, storyBlob = null;
+
+function storyData(wid, d) {
+  const s = DB.logs[d] && DB.logs[d][wid]; if (!s || !doneCount(s)) return null;
+  const w = workoutById(wid) || { title: wid, items: [] };
+  const exIds = Object.keys(s.sets || {}).filter((e) => s.sets[e].some((x) => x.done));
+  const pos = (e) => { const i = (w.items || []).indexOf(e); return i < 0 ? 99 : i; };
+  exIds.sort((a, b) => pos(a) - pos(b));
+  let volume = 0, sets = 0; const lifts = [];
+  exIds.forEach((e) => {
+    const ex = P.exercises[e]; if (!ex) return;
+    const base = baseOf(e), wt = !!ex.weighted, sec = ex.unit === 'sec';
+    let best = null;
+    s.sets[e].filter((x) => x.done).forEach((x) => {
+      sets++;
+      const reps = num(x.reps) || 0, kg = (num(x.kg) || 0) + (wt ? base : 0);
+      if (wt && kg > 0) volume += kg * reps * (ex.hands || 1);
+      const cur = { kg: wt ? kg : 0, reps };
+      if (!best || cur.kg > best.kg || (cur.kg === best.kg && cur.reps > best.reps)) best = cur;
+    });
+    // рекорд: лучше всего, что было в прошлые дни
+    let prev = null;
+    Object.keys(DB.logs).filter((dd) => dd < d).forEach((dd) => Object.values(DB.logs[dd]).forEach((ss) => {
+      ((ss.sets && ss.sets[e]) || []).forEach((x) => {
+        if (!x.done) return;
+        const cur = { kg: wt ? (num(x.kg) || 0) + base : 0, reps: num(x.reps) || 0 };
+        if (!prev || cur.kg > prev.kg || (cur.kg === prev.kg && cur.reps > prev.reps)) prev = cur;
+      });
+    }));
+    const record = !!(prev && best && (best.kg > prev.kg || (best.kg === prev.kg && best.reps > prev.reps)));
+    lifts.push({ name: ex.name, kg: best.kg, reps: best.reps, sec, wt, record, hands: ex.hands || 1, rank: ex.mobility ? 3 : wt ? 0 : (sec ? 2 : 1) });
+  });
+  lifts.sort((a, b) => a.rank - b.rank); // сначала с отягощением, потом свой вес, потом на время
+  // номер тренировки по порядку
+  const all = [];
+  Object.keys(DB.logs).forEach((dd) => Object.entries(DB.logs[dd]).forEach(([k, ss]) => { if (doneCount(ss) > 0) all.push(`${dd}|${String(ss.startedAt || 0).padStart(14, '0')}|${k}`); }));
+  all.sort();
+  const me = all.indexOf(`${d}|${String(s.startedAt || 0).padStart(14, '0')}|${wid}`);
+  const number = me >= 0 ? me + 1 : all.length;
+  const secs = s.finished ? sessionSeconds(s) : 0;
+  const kcal = secs ? Math.round(STORY_MET * STORY_BODY_KG * secs / 3600) : 0;
+  // тренировок за неделю, заканчивая этим днём
+  const dt = new Date(d + 'T12:00:00'); let week = 0;
+  for (let i = 0; i < 7; i++) {
+    const x = new Date(dt); x.setDate(dt.getDate() - i);
+    const day = DB.logs[dateStr(x)]; if (day) Object.values(day).forEach((ss) => { if (doneCount(ss) > 0) week++; });
+  }
+  return { w, d, dt, secs, kcal, sets, volume: Math.round(volume), lifts, number, week, records: lifts.filter((l) => l.record).length };
+}
+function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function fitText(c, text, maxW) {
+  if (c.measureText(text).width <= maxW) return text;
+  let t = text; while (t.length > 3 && c.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t.trim() + '…';
+}
+async function drawStory(D) {
+  try { await Promise.all([document.fonts.load('800 60px Unbounded', 'А1'), document.fonts.load('800 30px Manrope', 'А1'), document.fonts.load('700 30px Manrope', 'А1'), document.fonts.load('500 30px Manrope', 'А1')]); } catch (e) { /* шрифт системный */ }
+  const W = 1080, H = 1920, LIME = '#c6f432', PX = 84;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
+  const U = (px) => `800 ${px}px Unbounded, "Segoe UI", Arial, sans-serif`;
+  const M = (wt, px) => `${wt} ${px}px Manrope, "Segoe UI", Arial, sans-serif`;
+  const sp = (v) => { if ('letterSpacing' in c) c.letterSpacing = v; };
+  c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+  let g = c.createRadialGradient(W - 120, 330, 0, W - 120, 330, 760); g.addColorStop(0, 'rgba(198,244,50,.26)'); g.addColorStop(1, 'rgba(198,244,50,0)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  g = c.createRadialGradient(80, H - 380, 0, 80, H - 380, 620); g.addColorStop(0, 'rgba(198,244,50,.12)'); g.addColorStop(1, 'rgba(198,244,50,0)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.textBaseline = 'alphabetic';
+
+  // шапка (безопасная зона сторис: не ниже 250 и не выше 1670)
+  let y = 300;
+  c.fillStyle = LIME; c.font = M(800, 34); sp('7px'); c.textAlign = 'left'; c.fillText('MAX RICCO', PX, y);
+  c.textAlign = 'right'; c.fillStyle = '#9a9aa2'; c.font = M(700, 34); sp('3px');
+  c.fillText(`${D.dt.getDate()} ${MONTH_GEN[D.dt.getMonth()]}`.toUpperCase(), W - PX, y);
+  c.textAlign = 'left'; sp('0px');
+
+  // название
+  y += 120; c.fillStyle = '#fff'; c.font = U(80);
+  c.fillText(fitText(c, `ТРЕНИРОВКА ${D.w.short || ''}`.trim(), W - 2 * PX), PX, y);
+  y += 54; c.fillStyle = '#9a9aa2'; c.font = M(700, 38); c.fillText(fitText(c, D.w.title || '', W - 2 * PX), PX, y);
+
+  // значок номера тренировки
+  y += 56; const ms = MILESTONES.includes(D.number);
+  const label = ms ? `★ ${D.number}-Я ТРЕНИРОВКА` : `ТРЕНИРОВКА № ${D.number}`;
+  c.font = U(30); sp('1px'); const lw = c.measureText(label).width + 64;
+  if (ms) { c.fillStyle = LIME; rr(c, PX, y, lw, 74, 37); c.fill(); c.fillStyle = '#0a0a0a'; }
+  else { c.strokeStyle = '#3a3a40'; c.lineWidth = 3; rr(c, PX + 1.5, y + 1.5, lw - 3, 71, 36); c.stroke(); c.fillStyle = '#d6d6dc'; }
+  c.fillText(label, PX + 32, y + 49); sp('0px');
+  if (D.records) { c.fillStyle = LIME; c.font = M(800, 32); c.fillText(`★ ${D.records} ${plural(D.records, 'рекорд', 'рекорда', 'рекордов')}`, PX + lw + 28, y + 49); }
+  else if (D.week > 1) { c.fillStyle = '#9a9aa2'; c.font = M(700, 32); c.fillText(`${D.week} ${plural(D.week, 'тренировка', 'тренировки', 'тренировок')} за неделю`, PX + lw + 28, y + 48); }
+
+  // главное число: время
+  y += 272; c.fillStyle = LIME;
+  if (D.secs) {
+    const m = Math.round(D.secs / 60), h = Math.floor(m / 60), mm = m % 60;
+    const big = h ? `${h}:${pad(mm)}` : String(m); c.font = U(h ? 200 : 225); c.fillText(big, PX - 6, y);
+    const bw = c.measureText(big).width; c.fillStyle = '#fff'; c.font = U(46); c.fillText(h ? 'ЧАС' : 'МИН', PX + bw + 24, y - 4);
+  } else { c.font = U(225); c.fillText(String(D.sets), PX - 6, y); const bw = c.measureText(String(D.sets)).width; c.fillStyle = '#fff'; c.font = U(46); c.fillText('ПОДХ.', PX + bw + 24, y - 4); }
+  y += 50; c.fillStyle = '#9a9aa2'; c.font = M(800, 32); sp('5px'); c.fillText(D.secs ? 'ВРЕМЯ ТРЕНИРОВКИ' : 'ПОДХОДОВ', PX, y); sp('0px');
+
+  // три плитки
+  y += 46; const tiles = [];
+  if (D.secs) tiles.push([String(D.sets), 'ПОДХОДОВ']);
+  tiles.push([D.volume ? D.volume.toLocaleString('ru-RU').replace(/ /g, ' ') : '—', 'КГ ПОДНЯТО']);
+  if (D.kcal) tiles.push(['≈' + D.kcal, 'ККАЛ']); else tiles.push([String(D.lifts.length), 'УПРАЖНЕНИЙ']);
+  if (tiles.length < 3) tiles.splice(0, 0, [String(D.lifts.length), 'УПРАЖНЕНИЙ']);
+  const gap = 24, tw = (W - 2 * PX - gap * 2) / 3, th = 172;
+  tiles.slice(0, 3).forEach((t, i) => {
+    const x = PX + i * (tw + gap);
+    c.fillStyle = '#141416'; rr(c, x, y, tw, th, 32); c.fill(); c.strokeStyle = '#26262a'; c.lineWidth = 2; rr(c, x + 1, y + 1, tw - 2, th - 2, 31); c.stroke();
+    c.fillStyle = '#fff'; c.font = U(t[0].length > 5 ? 44 : 54); c.textAlign = 'center'; c.fillText(t[0], x + tw / 2, y + 92);
+    c.fillStyle = '#8b8b92'; c.font = M(800, 25); sp('3px'); c.fillText(t[1], x + tw / 2 + 1, y + 138); sp('0px'); c.textAlign = 'left';
+  });
+
+  // лучшие подходы
+  y += th + 54; c.fillStyle = '#8b8b92'; c.font = M(800, 28); sp('5px'); c.fillText('ЛУЧШИЕ ПОДХОДЫ', PX, y); sp('0px');
+  const rows = D.lifts.slice(0, 6), rh = 78; y += 20;
+  const maxY = 1670; const fit = Math.max(3, Math.min(rows.length, Math.floor((maxY - y) / rh)));
+  rows.slice(0, fit).forEach((l, i) => {
+    const ry = y + i * rh; c.fillStyle = '#26262a'; c.fillRect(PX, ry, W - 2 * PX, 2);
+    const res = l.sec ? `${l.reps} сек` : (l.wt && l.kg ? `${l.hands > 1 ? '2 × ' : ''}${fmtKgNum(l.kg)} кг × ${l.reps}` : `${l.reps} повт.`);
+    c.font = U(31); c.textAlign = 'right'; c.fillStyle = l.record ? LIME : '#fff'; c.fillText(res, W - PX, ry + 52);
+    const resW = c.measureText(res).width, rw = resW + (l.record ? 44 : 0) + 28;
+    c.textAlign = 'left'; c.font = M(700, 36); c.fillStyle = '#e8e8ee'; c.fillText(fitText(c, l.name, W - 2 * PX - rw), PX, ry + 52);
+    if (l.record) { c.fillStyle = LIME; c.font = M(800, 34); c.textAlign = 'right'; c.fillText('★', W - PX - resW - 18, ry + 51); c.textAlign = 'left'; }
+  });
+  return new Promise((res) => cv.toBlob((b) => res(b), 'image/png'));
+}
+async function openStory(wid, d) {
+  const D = storyData(wid, d || dateStr());
+  if (!D) { toast('Сначала отметь хотя бы один подход'); return; }
+  toast('Рисую картинку…');
+  const blob = await drawStory(D); if (!blob) { toast('Не получилось нарисовать'); return; }
+  closeStory(); storyBlob = blob; storyUrl = URL.createObjectURL(blob);
+  const el = document.createElement('div'); el.id = 'story'; el.className = 'story';
+  el.innerHTML = `<div class="storybox"><img src="${storyUrl}" alt="Картинка для сторис"><div class="storybtns">
+    <button class="primary" data-act="storyshare">Поделиться в Instagram</button>
+    <button data-act="storysave">Сохранить</button><button class="ghost" data-act="storyclose">Закрыть</button></div></div>`;
+  document.body.appendChild(el);
+}
+function closeStory() {
+  const el = $('#story'); if (el) el.remove();
+  if (storyUrl) { URL.revokeObjectURL(storyUrl); storyUrl = null; } storyBlob = null;
+}
+function blobToBase64(b) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(b); });
+}
+async function shareStory() {
+  if (!storyBlob) return;
+  const name = `fitness-story-${dateStr()}.png`;
+  // 1) Android-приложение: плагины Capacitor Filesystem + Share
+  try {
+    const P_ = window.Capacitor && window.Capacitor.Plugins;
+    if (P_ && P_.Filesystem && P_.Share) {
+      const r = await P_.Filesystem.writeFile({ path: name, data: await blobToBase64(storyBlob), directory: 'CACHE' });
+      await P_.Share.share({ title: 'Моя тренировка', files: [r.uri], dialogTitle: 'Поделиться картинкой' });
+      return;
+    }
+  } catch (e) { if (e && /cancel/i.test(String(e.message || e))) return; }
+  // 2) браузер / PWA
+  try {
+    const file = new File([storyBlob], name, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Моя тренировка' }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  saveStory();
+}
+function saveStory() {
+  if (!storyBlob) return;
+  const a = document.createElement('a'); a.href = storyUrl; a.download = `fitness-story-${dateStr()}.png`;
+  document.body.appendChild(a); a.click(); a.remove(); toast('Картинка сохранена в загрузки');
+}
+
 async function shareText() {
   const text = journalText();
   try {

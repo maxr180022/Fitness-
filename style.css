@@ -212,3 +212,11 @@ body[data-r="w"] main { padding-bottom: 40px; }
   a { color: #111 !important; text-decoration: none; }
   th, td { border-bottom: 1px solid #ccc !important; }
 }
+
+/* картинка для сторис */
+.story { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.storybox { display: flex; flex-direction: column; align-items: center; gap: 10px; max-height: 100%; width: 100%; max-width: 420px; }
+.storybox img { max-width: 100%; max-height: calc(100vh - 150px); object-fit: contain; border-radius: 18px; border: 1px solid var(--line); }
+.storybtns { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; }
+.storybtns button { flex: 1 1 auto; padding: 10px 12px; border-radius: 14px; }
+.storybtns .primary { flex: 1 1 100%; }

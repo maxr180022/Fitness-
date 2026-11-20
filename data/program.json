@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 8,
   "updated": "2026-11-17",
   "exercises": {
     "squat": {
@@ -148,7 +148,8 @@
         "Корпус заваливается вперёд",
         "Колено впереди выходит за носок"
       ],
-      "poster": "media/p/hipflex.jpg"
+      "poster": "media/p/hipflex.jpg",
+      "mobility": true
     },
     "catcow": {
       "name": "Кошка-корова",
@@ -168,7 +169,8 @@
         "Рывки и спешка",
         "Слишком глубокий прогиб поясницы через боль"
       ],
-      "poster": "media/p/catcow.jpg"
+      "poster": "media/p/catcow.jpg",
+      "mobility": true
     },
     "child": {
       "name": "Поза ребёнка",
@@ -188,7 +190,8 @@
         "Напряжённые плечи",
         "Через боль в коленях: подложи подушку под колени или ягодицы"
       ],
-      "poster": "media/p/child.jpg"
+      "poster": "media/p/child.jpg",
+      "mobility": true
     },
     "rdl": {
       "name": "Румынская тяга со штангой",
@@ -237,7 +240,8 @@
       ],
       "weighted": true,
       "base": 1.5,
-      "baseNote": "ручка 1,5 кг"
+      "baseNote": "ручка 1,5 кг",
+      "hands": 2
     },
     "row": {
       "name": "Тяга штанги в наклоне",
@@ -308,7 +312,8 @@
       ],
       "weighted": true,
       "base": 1.5,
-      "baseNote": "ручка 1,5 кг"
+      "baseNote": "ручка 1,5 кг",
+      "hands": 2
     },
     "pullup": {
       "name": "Подтягивания на турнике",
