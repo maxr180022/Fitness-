@@ -461,7 +461,7 @@ function viewFood() {
   } else if (foodTab === 'shop') {
     const done = N.shopping.filter((s) => DB.shop[s.id]).length;
     h += `<div class="card"><div class="row between"><h3>Список покупок</h3><span class="muted">${done} / ${N.shopping.length}</span></div>
-      ${N.shopping.map((s) => `<label class="check ${DB.shop[s.id] ? 'on' : ''}"><input type="checkbox" data-act="shop" data-id="${esc(s.id)}" ${DB.shop[s.id] ? 'checked' : ''}><span>${esc(s.text)}</span></label>`).join('')}
+      ${N.shopping.map((s) => `<label class="check ${DB.shop[s.id] ? 'on' : ''}"><input type="checkbox" data-act="shop" data-id="${esc(s.id)}" ${DB.shop[s.id] ? 'checked' : ''}><span>${esc(s.text)}</span>${s.url ? `<a class="ext" href="${esc(s.url)}" target="_blank" rel="noopener">Devoto</a>` : ''}</label>`).join('')}
       <button class="ghost block" style="margin-top:10px" data-act="shopreset">Снять все отметки</button></div>`;
   } else {
     h += `<div class="card"><ul class="tips">${N.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>`;
