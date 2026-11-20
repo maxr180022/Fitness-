@@ -665,7 +665,7 @@ function viewMore() {
   <div class="card"><h3>Установка на телефон</h3>${installEvt ? '<button class="primary block" data-act="install">Установить приложение</button>' : ''}
     <p class="muted small">Chrome на Android: меню ⋮ → «Установить приложение» (или «Добавить на главный экран»). После этого иконка «Фитнес» появится среди приложений.</p></div>
   <div class="card"><h3>Копия на сервере</h3><p class="muted small">Журнал сам сохраняется в твой закрытый репозиторий на GitHub: после тренировки и при выходе из приложения. Если приложение удалят, записи вернутся. Ничего не стирается: версии дней сливаются.</p>
-    <label class="f">Репозиторий (владелец/название)</label><input id="sy-repo" placeholder="maxr180022/fitness-data" value="${esc((syncCfg() || {}).repo || '')}" autocapitalize="off" autocomplete="off">
+    <label class="f">Репозиторий (владелец/название)</label><input id="sy-repo" value="${esc((syncCfg() || {}).repo || 'maxr180022/fitness-data')}" autocapitalize="off" autocomplete="off">
     <label class="f">Токен доступа</label><input id="sy-token" type="password" placeholder="${syncCfg() ? 'сохранён, оставь пустым' : 'github_pat_…'}" autocomplete="off">
     <button class="primary block" style="margin-top:10px" data-act="syncsave">Подключить и сохранить</button>
     <button class="block" style="margin-top:8px" data-act="syncnow">Сохранить сейчас</button>
@@ -837,7 +837,7 @@ document.addEventListener('click', (e) => {
   if (act === 'sharetext') { shareText(); return; }
   if (act === 'syncnow') { syncNow(true); return; }
   if (act === 'syncsave') {
-    const old = syncCfg() || {}, repo = ($('#sy-repo').value || '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, ''), token = ($('#sy-token').value || '').trim() || old.token;
+    const old = syncCfg() || {}, repo = ($('#sy-repo').value || 'maxr180022/fitness-data').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/$/, ''), token = ($('#sy-token').value || '').trim() || old.token;
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { toast('Репозиторий вида владелец/название'); return; }
     if (!token) { toast('Вставь токен'); return; }
     localStorage.setItem(SYNC_KEY, JSON.stringify({ repo, token })); $('#sy-token').value = ''; syncNow(true); return;
