@@ -89,10 +89,10 @@ function getSession(wid, create) {
 function baseOf(id) { const e = P && P.exercises && P.exercises[id]; return (e && e.base) || 0; }
 function fmtKgNum(n) { return String(Math.round(n * 100) / 100).replace('.', ','); }
 function kgPre(id, kg) {
-  const b = baseOf(id);
-  if (!b) return kg ? `${kg} кг × ` : '';
+  const b = baseOf(id), e = P && P.exercises && P.exercises[id], pair = e && e.hands > 1 ? `${e.hands} × ` : '';
+  if (!b) return kg ? `${pair}${kg} кг × ` : '';
   const k = parseFloat(String(kg).replace(',', '.'));
-  return `${fmtKgNum((isNaN(k) ? 0 : k) + b)} кг × `;
+  return `${pair}${fmtKgNum((isNaN(k) ? 0 : k) + b)} кг × `;
 }
 function getSets(wid, exId, n) {
   const s = getSession(wid, true);
@@ -411,7 +411,7 @@ function viewStep(wid, idxRaw) {
       ${orig ? `<button class="opt" data-act="swapback" data-orig="${esc(orig)}"><span class="grow"><b>Вернуть «${esc((P.exercises[orig] || {}).name || orig)}»</b></span></button>` : ''}</div>`;
   }
   h += `<div class="cols">${wt ? `<span>${baseOf(exId) ? 'Блины' : 'Вес'}</span>` : ''}<span>${sec ? 'Секунды' : 'Повторения'}</span></div>`;
-  if (baseOf(exId)) h += `<p class="muted small" style="margin:0 6px 8px">Вводи только вес блинов: ${esc(ex.baseNote)} прибавится сам${exId === 'rdl' || exId === 'row' ? '. Блины считай всего на грифе' : '. Вес одной гантели'}.</p>`;
+  if (baseOf(exId)) h += `<p class="muted small" style="margin:0 6px 8px">Вводи только вес блинов: ${esc(ex.baseNote)} прибавится сам${exId === 'rdl' || exId === 'row' ? '. Блины считай всего на грифе' : (ex.hands > 1 ? '. Блины на одной гантели, вторая такая же' : '. Вес блинов на гантели')}.</p>`;
   h += '<div class="srows">' + arr.map((s, i) => setRow(w.id, exId, i, s, ex)).join('') + '</div>';
   h += `<button class="addset" data-act="addset" data-w="${esc(w.id)}" data-e="${esc(exId)}"><span class="rbtn">${ic('plus')}</span><b>Ещё подход</b></button>`;
   const note = (sess && sess.notes && sess.notes[exId]) || '';
