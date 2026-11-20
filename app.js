@@ -927,9 +927,9 @@ function storyData(wid, d) {
   exIds.forEach((e) => {
     const ex = P.exercises[e]; if (!ex) return;
     const base = baseOf(e), wt = !!ex.weighted, sec = ex.unit === 'sec';
-    let best = null;
+    let best = null; const allReps = [];
     s.sets[e].filter((x) => x.done).forEach((x) => {
-      sets++;
+      sets++; allReps.push(num(x.reps) || 0);
       const reps = num(x.reps) || 0, kg = (num(x.kg) || 0) + (wt ? base : 0);
       if (wt && kg > 0) volume += kg * reps * (ex.hands || 1);
       const cur = { kg: wt ? kg : 0, reps };
@@ -945,7 +945,7 @@ function storyData(wid, d) {
       });
     }));
     const record = !!(prev && best && (best.kg > prev.kg || (best.kg === prev.kg && best.reps > prev.reps)));
-    lifts.push({ name: ex.name, kg: best.kg, reps: best.reps, sec, wt, record, hands: ex.hands || 1, rank: ex.mobility ? 3 : wt ? 0 : (sec ? 2 : 1) });
+    lifts.push({ name: ex.name, kg: best.kg, reps: best.reps, allReps, sec, wt, record, hands: ex.hands || 1, rank: ex.mobility ? 3 : wt ? 0 : (sec ? 2 : 1) });
   });
   lifts.sort((a, b) => a.rank - b.rank); // сначала с отягощением, потом свой вес, потом на время
   // номер тренировки по порядку
@@ -1035,7 +1035,7 @@ async function drawStory(D) {
   const maxY = 1670; const fit = Math.max(3, Math.min(rows.length, Math.floor((maxY - y) / rh)));
   rows.slice(0, fit).forEach((l, i) => {
     const ry = y + i * rh; c.fillStyle = '#26262a'; c.fillRect(PX, ry, W - 2 * PX, 2);
-    const res = l.sec ? `${l.reps} сек` : (l.wt && l.kg ? `${l.hands > 1 ? '2 × ' : ''}${fmtKgNum(l.kg)} кг × ${l.reps}` : `${l.reps} повт.`);
+    const res = !l.wt && l.allReps.length > 1 ? `${l.allReps.join(' + ')} ${l.sec ? 'сек' : 'повт.'}` : l.sec ? `${l.reps} сек` : (l.wt && l.kg ? `${l.hands > 1 ? '2 × ' : ''}${fmtKgNum(l.kg)} кг × ${l.reps}` : `${l.reps} повт.`);
     c.font = U(31); c.textAlign = 'right'; c.fillStyle = l.record ? LIME : '#fff'; c.fillText(res, W - PX, ry + 52);
     const resW = c.measureText(res).width, rw = resW + (l.record ? 44 : 0) + 28;
     c.textAlign = 'left'; c.font = M(700, 36); c.fillStyle = '#e8e8ee'; c.fillText(fitText(c, l.name, W - 2 * PX - rw), PX, ry + 52);
