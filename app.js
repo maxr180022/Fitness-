@@ -1035,7 +1035,7 @@ async function drawStory(D) {
   const maxY = 1670; const fit = Math.max(3, Math.min(rows.length, Math.floor((maxY - y) / rh)));
   rows.slice(0, fit).forEach((l, i) => {
     const ry = y + i * rh; c.fillStyle = '#26262a'; c.fillRect(PX, ry, W - 2 * PX, 2);
-    const res = !l.wt && l.allReps.length > 1 ? `${l.allReps.join(' + ')} ${l.sec ? 'сек' : 'повт.'}` : l.sec ? `${l.reps} сек` : (l.wt && l.kg ? `${l.hands > 1 ? '2 × ' : ''}${fmtKgNum(l.kg)} кг × ${l.reps}` : `${l.reps} повт.`);
+    const res = !l.wt && l.allReps.length > 1 ? `${l.allReps.join(' + ')} = ${l.allReps.reduce((p, q) => p + q, 0)} ${l.sec ? 'сек' : 'повт.'}` : l.sec ? `${l.reps} сек` : (l.wt && l.kg ? `${l.hands > 1 ? '2 × ' : ''}${fmtKgNum(l.kg)} кг × ${l.reps}` : `${l.reps} повт.`);
     c.font = U(31); c.textAlign = 'right'; c.fillStyle = l.record ? LIME : '#fff'; c.fillText(res, W - PX, ry + 52);
     const resW = c.measureText(res).width, rw = resW + (l.record ? 44 : 0) + 28;
     c.textAlign = 'left'; c.font = M(700, 36); c.fillStyle = '#e8e8ee'; c.fillText(fitText(c, l.name, W - 2 * PX - rw), PX, ry + 52);
