@@ -954,6 +954,13 @@ async function drawStory(D) {
     c.textAlign = 'left'; c.font = M(700, 36); c.fillStyle = '#e8e8ee'; c.fillText(fitText(c, l.name, W - 2 * PX - rw), PX, ry + 52);
     if (l.record) { c.fillStyle = LIME; c.font = M(800, 34); c.textAlign = 'right'; c.fillText('★', W - PX - resW - 18, ry + 51); c.textAlign = 'left'; }
   });
+  // подпись
+  const sy = Math.min(1690, y + fit * rh + 78);
+  const t1 = 'приложение ', t2 = 'RusWeo Fitness';
+  c.font = M(700, 34); const w1 = c.measureText(t1).width; c.font = U(36); const w2 = c.measureText(t2).width;
+  const sx = (W - w1 - w2) / 2; c.textAlign = 'left';
+  c.font = M(700, 34); c.fillStyle = '#9a9aa2'; c.fillText(t1, sx, sy);
+  c.font = U(36); c.fillStyle = LIME; c.fillText(t2, sx + w1, sy);
   return new Promise((res) => cv.toBlob((b) => res(b), 'image/png'));
 }
 async function openStory(wid, d) {
