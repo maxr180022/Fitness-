@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "updated": "2026-11-20",
   "exercises": {
     "squat": {
@@ -349,7 +349,7 @@
       "def": 12,
       "target": "10–15",
       "rest": 60,
-      "video": null,
+      "video": "media/18-flyfloor.mp4",
       "tips": [
         "Ляг на коврик, колени согнуты, стопы на полу, лопатки прижаты к полу",
         "Гантели над грудью, локти чуть согнуты и остаются согнутыми весь подход",
@@ -366,7 +366,8 @@
       "weighted": true,
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
-      "hands": 2
+      "hands": 2,
+      "poster": "media/p/flyfloor.jpg"
     },
     "hipthrust": {
       "name": "Ягодичный мост со штангой",
@@ -375,7 +376,7 @@
       "def": 12,
       "target": "10–12",
       "rest": 75,
-      "video": null,
+      "video": "media/16-hipthrust.mp4",
       "tips": [
         "Ляг на коврик, колени согнуты, стопы на ширине таза, пятки близко к ягодицам",
         "Штанга лежит на бёдрах (подложи сложенное полотенце), держи её руками с боков",
@@ -391,7 +392,8 @@
       ],
       "weighted": true,
       "base": 6,
-      "baseNote": "гриф 6 кг"
+      "baseNote": "гриф 6 кг",
+      "poster": "media/p/hipthrust.jpg"
     },
     "pullover": {
       "name": "Пуловер с гантелью лёжа на полу",
@@ -400,7 +402,7 @@
       "def": 12,
       "target": "10–12",
       "rest": 60,
-      "video": null,
+      "video": "media/17-pullover.mp4",
       "tips": [
         "Ляг на коврик, колени согнуты, стопы на полу",
         "Держи одну гантель двумя руками, обхватив ладонями внутренний блин, над грудью",
@@ -417,7 +419,8 @@
       "weighted": true,
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
-      "hands": 1
+      "hands": 1,
+      "poster": "media/p/pullover.jpg"
     }
   },
   "workouts": [
