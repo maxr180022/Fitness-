@@ -2,10 +2,10 @@
 // Service worker: контент всегда берётся из сети (если она есть), иначе из кэша.
 // Видео кэшируются при первом просмотре. Пересобирать приложение не нужно:
 // достаточно обновить файлы в репозитории.
-const CORE = 'fit-core-v3';
+const CORE = 'fit-core-v4';
 const MEDIA = 'fit-media-v1';
 const SHELL = ['./', 'index.html', 'app.js', 'style.css', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png', 'data/program.json', 'data/nutrition.json',
+  'icons/icon-192.png', 'icons/icon-512.png', 'data/program.json', 'data/nutrition.json', 'data/body.json',
   'fonts/unbounded-cyrillic-800-normal.woff2', 'fonts/unbounded-latin-800-normal.woff2',
   'fonts/manrope-cyrillic-500-normal.woff2', 'fonts/manrope-cyrillic-700-normal.woff2', 'fonts/manrope-cyrillic-800-normal.woff2',
   'fonts/manrope-latin-500-normal.woff2', 'fonts/manrope-latin-700-normal.woff2', 'fonts/manrope-latin-800-normal.woff2',

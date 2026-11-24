@@ -16,6 +16,7 @@ const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return i
 
 let DB = loadDB();
 let P = null; // программа
+let BODY = null; // стартовые замеры и контрольные точки
 let N = null; // питание
 let foodTab = 'menu';
 let foodWeek = 0;
@@ -143,10 +144,18 @@ async function mergeHistory() {
   }));
   if (added) save();
 }
+// Стартовые замеры из data/body.json добавляются в журнал замеров один раз (по id), удалять их нельзя.
+function seedBaseline() {
+  if (!BODY || !Array.isArray(BODY.baseline)) return;
+  const ids = new Set(DB.measures.map((m) => m.id)); let added = false;
+  BODY.baseline.forEach((m) => { if (!ids.has(m.id)) { DB.measures.push(Object.assign({}, m)); added = true; } });
+  if (added) { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) { /* ok */ } scheduleSync(); }
+}
 async function loadContent() {
   const [p, n] = await Promise.all([getJSON('data/program.json'), getJSON('data/nutrition.json')]);
   const changed = JSON.stringify(p) !== JSON.stringify(P) || JSON.stringify(n) !== JSON.stringify(N);
   P = p; N = n;
+  try { BODY = await getJSON('data/body.json'); seedBaseline(); } catch (e) { /* без стартовых замеров */ }
   return changed;
 }
 
@@ -335,8 +344,8 @@ function viewToday() {
     <button class="ghost" data-act="water" data-ml="-${N.targets.waterGlassMl}">−</button></div></div>`;
   const waist = lastMeasure('waist'); const ws = weekStats();
   h += `<div class="grid2"><div class="card"><div class="muted small">За 7 дней</div><h1>${ws.c}</h1><div class="muted small">${ws.sec ? fmtLong(ws.sec) : 'тренировок'}</div></div>
-    <div class="card"><div class="muted small">Талия${waist ? ' · ' + shortDate(waist.d) : ''}</div><h1>${waist ? waist.v + ' см' : '—'}</h1></div></div>`;
-  if (wd === 0) h += `<div class="card accent"><h3>Воскресенье: замер талии</h3><p class="muted small">Утром, натощак, на уровне пупка, на выдохе.</p><a class="btn block" href="#/progress">Записать замер</a></div>`;
+    <a class="card" href="#/body" style="color:inherit;text-decoration:none"><div class="muted small">Талия${waist ? ' · ' + shortDate(waist.d) : ''}</div><h1>${waist ? String(waist.v).replace('.', ',') + ' см' : '—'}</h1></a></div>`;
+  if (wd === 0) h += `<div class="card accent"><h3>Воскресенье: замер талии</h3><p class="muted small">Утром, натощак, на уровне пупка, на выдохе.</p><a class="btn block" href="#/body">Записать замер</a></div>`;
   return h;
 }
 
@@ -604,24 +613,51 @@ function lineChart(points, unit) {
     <text x="${W - R}" y="${H - 5}" fill="#9aa3b2" font-size="10" text-anchor="end">${shortDate(points[points.length - 1].d)}</text></svg><div class="muted small">${esc(unit)}</div>`;
 }
 
-const MFIELDS = [['waist', 'Талия'], ['navel', 'Живот на уровне пупка'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Рука'], ['hips', 'Бёдра'], ['thigh', 'Нога (бедро)']];
+const MFIELDS = [['waist', 'Талия (пупок)'], ['belly', 'Низ живота'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Бицепс'], ['hips', 'Бёдра'], ['thigh', 'Нога (бедро)']];
+const CFIELDS = [['weight', 'Вес, кг'], ['muscle', 'Мышцы, кг'], ['fat', 'Жир, %'], ['bmr', 'Обмен, ккал']];
+const ALLF = MFIELDS.map(([k, t]) => [k, t, 'см']).concat(CFIELDS.map(([k, t]) => [k, t.split(',')[0], t.split(', ')[1]]));
+
+function viewBody() {
+  const ms = [...DB.measures].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const first = (k) => ms.find((m) => m[k] != null), last = (k) => [...ms].reverse().find((m) => m[k] != null);
+  let h = `<a href="#/progress" data-act="back">← Назад</a><h1>Замеры</h1>`;
+  const rows = ALLF.map(([k, t, u]) => {
+    const a = first(k), b = last(k); if (!a) return '';
+    const d = a === b ? null : Math.round((b[k] - a[k]) * 10) / 10;
+    const dd = d == null ? '' : `<span class="${d < 0 ? 'dn' : d > 0 ? 'up' : ''}">${d > 0 ? '+' : ''}${String(d).replace('.', ',')}</span>`;
+    return `<tr><td>${esc(t)}</td><td>${String(a[k]).replace('.', ',')}</td><td>${a === b ? '—' : String(b[k]).replace('.', ',')}</td><td>${dd}</td></tr>`;
+  }).join('');
+  h += `<div class="card"><h3>Было → стало</h3><table><tr><th></th><th>Старт</th><th>Сейчас</th><th>Разница</th></tr>${rows}</table>
+    <p class="muted small">Часы дают приблизительные цифры: смотри тренд, а не один замер. Фото тела лежат на сервере (папка photos).</p></div>`;
+  const wp = ms.filter((m) => m.waist != null).map((m) => ({ d: m.date, v: m.waist }));
+  h += `<div class="card"><h3>Талия на уровне пупка</h3>${lineChart(wp, 'см')}</div>`;
+  if (BODY && BODY.checkpoints) {
+    const td = dateStr(); const nx = BODY.checkpoints.find((c) => c.date >= td);
+    h += `<div class="card ${nx ? 'accent' : ''}"><h3>Контрольные точки</h3><table>${BODY.checkpoints.map((c) =>
+      `<tr><td>${c.week ? 'Неделя ' + c.week : 'Старт'}</td><td>${shortDate(c.date)}</td><td>${esc(c.what)}${nx === c ? ' · ближайшая' : ''}</td></tr>`).join('')}</table>
+      <p class="muted small">${esc(BODY.checkTodo || '')}</p></div>`;
+  }
+  h += `<div class="card"><h3>Новый замер</h3><p class="muted small">Талию мерь утром, натощак, на уровне пупка, на выдохе. Заполни только то, что измерил.</p>
+    <label class="f">Дата</label><input type="date" id="m-date" value="${dateStr()}">
+    <div class="grid2">${ALLF.map(([k, t, u]) => `<div><label class="f">${esc(t)}${u ? ', ' + esc(u) : ''}</label><input type="text" inputmode="decimal" id="m-${k}" placeholder="${esc(u)}"></div>`).join('')}</div>
+    <button class="primary block" style="margin-top:12px" data-act="msave">Сохранить замер</button></div>`;
+  const hist = [...ms].reverse();
+  h += `<div class="card"><h3>История замеров</h3>${hist.map((m) => {
+    const parts = ALLF.filter(([k]) => m[k] != null).map(([k, t, u]) => `${esc(t)} <b>${String(m[k]).replace('.', ',')}</b>`);
+    const isBase = String(m.id).startsWith('base-');
+    return `<div class="mrow"><div class="row between"><b>${shortDate(m.date)}${isBase ? ' · старт' : ''}</b>${isBase ? '' : `<button class="ghost danger" style="padding:4px 8px" data-act="mdel" data-id="${esc(m.id)}">×</button>`}</div>
+      <div class="small">${parts.join(' · ')}</div>${m.src ? `<div class="muted small">${esc(m.src)}</div>` : ''}</div>`;
+  }).join('')}</div>`;
+  return h;
+}
 
 function viewProgress() {
   let h = `<div class="row between"><h1>Прогресс</h1><a class="btn" href="#/report">PDF</a></div>
     <div class="card"><h3>Отправить Claude</h3><p class="muted small">Одним нажатием: выбери в меню «Поделиться» приложение Claude, и журнал (подходы, время, замеры) придёт в чат.</p>
     <button class="primary block" data-act="sharetext">Отправить журнал в чат</button>
     <button class="block" style="margin-top:8px" data-act="sharefile">Поделиться файлом данных</button></div>`;
-  h += `<div class="card"><h3>Новый замер, см</h3><p class="muted small">Талию мерь утром, натощак, на уровне пупка, на выдохе. Достаточно раз в неделю, лучше в воскресенье.</p>
-    <label class="f">Дата</label><input type="date" id="m-date" value="${dateStr()}">
-    <div class="grid2">${MFIELDS.map(([k, t]) => `<div><label class="f">${t}</label><input type="text" inputmode="decimal" id="m-${k}" placeholder="см"></div>`).join('')}</div>
-    <button class="primary block" style="margin-top:12px" data-act="msave">Сохранить замер</button></div>`;
-  const wp = DB.measures.filter((m) => m.waist != null).sort((a, b) => (a.date < b.date ? -1 : 1)).map((m) => ({ d: m.date, v: m.waist }));
-  h += `<div class="card"><h3>Талия</h3>${lineChart(wp, 'см')}</div>`;
-  if (DB.measures.length) {
-    const rows = [...DB.measures].sort((a, b) => (a.date < b.date ? 1 : -1));
-    h += `<div class="card"><h3>Замеры</h3><table><tr><th>Дата</th>${MFIELDS.map(([, t]) => `<th>${esc(t.split(' ')[0])}</th>`).join('')}<th></th></tr>${rows.map((m) =>
-      `<tr><td>${shortDate(m.date)}</td>${MFIELDS.map(([k]) => `<td>${m[k] != null ? m[k] : ''}</td>`).join('')}<td><button class="ghost danger" style="padding:4px 8px" data-act="mdel" data-id="${esc(m.id)}">×</button></td></tr>`).join('')}</table></div>`;
-  }
+  const lw = lastMeasure('waist');
+  h += `<a class="card" style="display:flex;justify-content:space-between;align-items:center;color:inherit;text-decoration:none" href="#/body"><div><b>Замеры тела</b><div class="muted small">${lw ? 'Талия ' + String(lw.v).replace('.', ',') + ' см · ' + shortDate(lw.d) : 'Талия, вес, мышцы, жир'}</div></div><span class="chev">›</span></a>`;
   // история тренировок
   const hist = [];
   Object.keys(DB.logs).sort().reverse().forEach((d) => Object.entries(DB.logs[d]).forEach(([wid, s]) => {
@@ -729,6 +765,7 @@ function render(keepScroll) {
     else if (r === 'ex') { html = viewExercise(a); tab = 'more'; }
     else if (r === 'food') { html = viewFood(); tab = 'food'; }
     else if (r === 'progress') { html = viewProgress(); tab = 'progress'; }
+    else if (r === 'body') { html = viewBody(); tab = 'progress'; }
     else if (r === 'more') { html = viewMore(); tab = 'more'; }
     else if (r === 'report') { html = viewReport(); tab = 'progress'; }
     else html = viewToday();
@@ -859,7 +896,7 @@ document.addEventListener('click', (e) => {
   if (act === 'shopreset') { DB.shop = {}; save(); render(true); return; }
   if (act === 'msave') {
     const m = { id: String(Date.now()), date: $('#m-date').value || dateStr() }; let any = false;
-    MFIELDS.forEach(([k]) => { const v = num($('#m-' + k).value); if (v != null) { m[k] = v; any = true; } });
+    ALLF.forEach(([k]) => { const v = num($('#m-' + k).value); if (v != null) { m[k] = v; any = true; } });
     if (!any) { toast('Введи хотя бы одно значение'); return; }
     DB.measures.push(m); save(); toast('Замер сохранён'); render(true); return;
   }
@@ -940,8 +977,8 @@ function journalText() {
   }));
   const ms = [...DB.measures].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 8);
   if (ms.length) {
-    lines.push('\nЗамеры, см:');
-    ms.forEach((m) => lines.push(`${shortDate(m.date)}: ` + MFIELDS.filter(([k]) => m[k] != null).map(([k, t]) => `${t.toLowerCase()} ${m[k]}`).join(', ')));
+    lines.push('\nЗамеры:');
+    ms.forEach((m) => lines.push(`${shortDate(m.date)}: ` + ALLF.filter(([k]) => m[k] != null).map(([k, t, u]) => `${t.toLowerCase()} ${m[k]}${u ? ' ' + u : ''}`).join(', ')));
   }
   return lines.join('\n');
 }
@@ -1174,7 +1211,7 @@ function parentOf(hash) {
   if (r === 'w' && p[2] !== undefined && p[2] !== '') return `#/w/${p[1]}`;
   if (r === 'ex') return '#/lib';
   if (r === 'lib') return '#/more';
-  if (r === 'report') return '#/progress';
+  if (r === 'report' || r === 'body') return '#/progress';
   return '#/';
 }
 function goUp() {
