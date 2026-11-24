@@ -162,6 +162,39 @@ function getSession(wid, create) {
 }
 function baseOf(id) { const e = P && P.exercises && P.exercises[id]; return (e && e.base) || 0; }
 function fmtKgNum(n) { return String(Math.round(n * 100) / 100).replace('.', ','); }
+
+// Рекомендация по весу: считается по последнему разу, иначе стартовое значение (поле rec в program.json)
+function recFor(exId) {
+  const ex = P && P.exercises && P.exercises[exId];
+  if (!ex || !ex.weighted) return null;
+  const base = baseOf(exId); const hands = ex.hands || 1;
+  const m = String(ex.target || '').match(/(\d+)\s*[–-]\s*(\d+)/); const hi = m ? +m[2] : 0;
+  const step = base >= 5 ? 5 : 2.5;
+  const num = (x) => parseFloat(String(x.kg).replace(',', '.'));
+  const today = dateStr(); let last = null;
+  Object.keys((DB && DB.logs) || {}).sort().reverse().some((d) => {
+    if (d >= today) return false;
+    return Object.values(DB.logs[d]).some((sess) => {
+      const a = sess && sess.sets && sess.sets[exId];
+      const done = a ? a.filter((x) => x.done && String(x.kg) !== '' && !isNaN(num(x))) : [];
+      if (done.length) { last = { d, sets: done }; return true; }
+      return false;
+    });
+  });
+  let plates; let why = '';
+  if (last) {
+    const top = Math.max(...last.sets.map(num));
+    const reps = last.sets.filter((x) => num(x) === top).map((x) => parseInt(x.reps, 10) || 0);
+    const allTop = hi && reps.length >= 2 && reps.every((r) => r >= hi);
+    plates = allTop ? top + step : top;
+    why = `Прошлый раз (${shortDate(last.d)}): ${fmtKgNum(top)} × ${reps.join(', ')}. ` + (allTop ? 'Все подходы на верху диапазона, поэтому прибавляем.' : `Вес оставляем, добей до ${hi || 'верха диапазона'} повторов во всех подходах.`);
+  } else if (ex.rec != null) {
+    plates = +ex.rec; why = 'Стартовый вес. Если останется больше 3 повторов в запасе, в следующий раз прибавим.';
+  } else return null;
+  const total = plates + base;
+  const tail = base >= 5 ? 'с грифом' : (hands > 1 ? 'в каждой руке' : 'на гантели');
+  return { plates, total, tail, why };
+}
 function kgPre(id, kg) {
   const b = baseOf(id), e = P && P.exercises && P.exercises[id], pair = e && e.hands > 1 ? `${e.hands} × ` : '';
   if (!b) return kg ? `${pair}${kg} кг × ` : '';
@@ -447,7 +480,7 @@ function setRow(wid, exId, i, s, ex) {
   const run = RT && RT.w === wid && RT.exId === exId && RT.i === i;
   return `<div class="srow ${s.done ? 'on' : ''} ${wt ? '' : 'nw'} ${run ? 'run' : ''}" data-w="${esc(wid)}" data-e="${esc(exId)}" data-i="${i}">
     <span class="num">${i + 1}</span>
-    ${wt ? `<label class="pillin"><input inputmode="decimal" data-f="kg" value="${esc(s.kg)}" placeholder="0" aria-label="вес блинов, кг"><u>${baseOf(exId) ? '+' + fmtKgNum(baseOf(exId)) : 'кг'}</u></label>` : ''}
+    ${wt ? `<label class="pillin"><input inputmode="decimal" data-f="kg" value="${esc(s.kg)}" placeholder="${esc((() => { const R = recFor(exId); return R ? fmtKgNum(R.plates) : '0'; })())}" aria-label="вес блинов, кг"><u>${baseOf(exId) ? '+' + fmtKgNum(baseOf(exId)) : 'кг'}</u></label>` : ''}
     <label class="pillin"><input inputmode="numeric" data-f="reps" value="${esc(s.reps)}" placeholder="${esc(phOf(ex))}" aria-label="${sec ? 'секунды' : 'повторы'}">${sec ? '<u>сек</u><span class="cd">0:00</span><button type="button" class="pt" data-act="tm" aria-label="таймер">' + ic('play') + ic('stop') + '</button>' : ''}</label>
     <button class="chk" data-act="chk" aria-label="подход выполнен">${ic('check')}</button></div>`;
 }
@@ -486,6 +519,8 @@ function viewStep(wid, idxRaw) {
   }
   h += `<div class="cols">${wt ? `<span>${baseOf(exId) ? 'Блины' : 'Вес'}</span>` : ''}<span>${sec ? 'Секунды' : 'Повторения'}</span></div>`;
   if (baseOf(exId)) h += `<p class="muted small" style="margin:0 6px 8px">Вводи только вес блинов: ${esc(ex.baseNote)} прибавится сам${exId === 'rdl' || exId === 'row' ? '. Блины считай всего на грифе' : (ex.hands > 1 ? '. Блины на одной гантели, вторая такая же' : '. Вес блинов на гантели')}.</p>`;
+  const R = wt ? recFor(exId) : null;
+  if (R) h += `<div class="rec"><b>Рекомендация: ${fmtKgNum(R.plates)}${baseOf(exId) ? ' на блинах' : ' кг'}</b> · всего ${fmtKgNum(R.total)} кг ${R.tail}<small>${esc(R.why)}</small></div>`;
   h += '<div class="srows">' + arr.map((s, i) => setRow(w.id, exId, i, s, ex)).join('') + '</div>';
   h += `<button class="addset" data-act="addset" data-w="${esc(w.id)}" data-e="${esc(exId)}"><span class="rbtn">${ic('plus')}</span><b>Ещё подход</b></button>`;
   const note = (sess && sess.notes && sess.notes[exId]) || '';

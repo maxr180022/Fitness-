@@ -1,6 +1,6 @@
 {
-  "version": 12,
-  "updated": "2026-11-20",
+  "version": 13,
+  "updated": "2026-11-24",
   "exercises": {
     "squat": {
       "name": "Приседания",
@@ -217,7 +217,8 @@
       "weighted": true,
       "base": 6,
       "baseNote": "гриф 6 кг",
-      "poster": "media/p/rdl.jpg"
+      "poster": "media/p/rdl.jpg",
+      "rec": 10
     },
     "floorpress": {
       "name": "Жим гантелей лёжа на полу",
@@ -243,7 +244,8 @@
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
       "hands": 2,
-      "poster": "media/p/floorpress.jpg"
+      "poster": "media/p/floorpress.jpg",
+      "rec": 5
     },
     "row": {
       "name": "Тяга штанги в наклоне",
@@ -269,7 +271,8 @@
       "weighted": true,
       "base": 6,
       "baseNote": "гриф 6 кг",
-      "poster": "media/p/row.jpg"
+      "poster": "media/p/row.jpg",
+      "rec": 20
     },
     "goblet": {
       "name": "Гоблет-присед с гантелью",
@@ -293,7 +296,8 @@
       "weighted": true,
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
-      "poster": "media/p/goblet.jpg"
+      "poster": "media/p/goblet.jpg",
+      "rec": 5
     },
     "ohp": {
       "name": "Жим гантелей стоя",
@@ -318,7 +322,8 @@
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
       "hands": 2,
-      "poster": "media/p/ohp.jpg"
+      "poster": "media/p/ohp.jpg",
+      "rec": 5
     },
     "pullup": {
       "name": "Подтягивания на турнике",
@@ -367,7 +372,8 @@
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
       "hands": 2,
-      "poster": "media/p/flyfloor.jpg"
+      "poster": "media/p/flyfloor.jpg",
+      "rec": 2.5
     },
     "hipthrust": {
       "name": "Ягодичный мост со штангой",
@@ -393,7 +399,8 @@
       "weighted": true,
       "base": 6,
       "baseNote": "гриф 6 кг",
-      "poster": "media/p/hipthrust.jpg"
+      "poster": "media/p/hipthrust.jpg",
+      "rec": 10
     },
     "pullover": {
       "name": "Пуловер с гантелью лёжа на полу",
@@ -420,7 +427,8 @@
       "base": 1.5,
       "baseNote": "ручка 1,5 кг",
       "hands": 1,
-      "poster": "media/p/pullover.jpg"
+      "poster": "media/p/pullover.jpg",
+      "rec": 5
     }
   },
   "workouts": [

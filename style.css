@@ -220,3 +220,7 @@ body[data-r="w"] main { padding-bottom: 40px; }
 .storybtns { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; }
 .storybtns button { flex: 1 1 auto; padding: 10px 12px; border-radius: 14px; }
 .storybtns .primary { flex: 1 1 100%; }
+
+.rec{margin:0 0 12px;padding:12px 14px;border:1px solid #c6f432;border-radius:16px;background:rgba(198,244,50,.08);font-size:15px;line-height:1.35}
+.rec b{color:#c6f432}
+.rec small{display:block;margin-top:4px;color:#9a9a9a;font-size:13px}
