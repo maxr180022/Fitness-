@@ -613,7 +613,7 @@ function lineChart(points, unit) {
     <text x="${W - R}" y="${H - 5}" fill="#9aa3b2" font-size="10" text-anchor="end">${shortDate(points[points.length - 1].d)}</text></svg><div class="muted small">${esc(unit)}</div>`;
 }
 
-const MFIELDS = [['waist', 'Талия (пупок)'], ['belly', 'Низ живота'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Бицепс'], ['hips', 'Бёдра'], ['thigh', 'Бедро правое'], ['thighL', 'Бедро левое'], ['neck', 'Шея']];
+const MFIELDS = [['waist', 'Живот на уровне пупка'], ['belly', 'Низ живота'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Бицепс'], ['hips', 'Бёдра'], ['thigh', 'Бедро правое'], ['thighL', 'Бедро левое'], ['neck', 'Шея']];
 const CFIELDS = [['weight', 'Вес, кг'], ['muscle', 'Мышцы, кг'], ['fat', 'Жир, %'], ['bmr', 'Обмен, ккал']];
 const ALLF = MFIELDS.map(([k, t]) => [k, t, 'см']).concat(CFIELDS.map(([k, t]) => [k, t.split(',')[0], t.split(', ')[1]]));
 
@@ -630,7 +630,7 @@ function viewBody() {
   h += `<div class="card"><h3>Было → стало</h3><table><tr><th></th><th>Старт</th><th>Сейчас</th><th>Разница</th></tr>${rows}</table>
     <p class="muted small">Часы дают приблизительные цифры: смотри тренд, а не один замер. Фото тела лежат на сервере (папка photos).</p></div>`;
   const wp = ms.filter((m) => m.waist != null).map((m) => ({ d: m.date, v: m.waist }));
-  h += `<div class="card"><h3>Талия на уровне пупка</h3>${lineChart(wp, 'см')}</div>`;
+  h += `<div class="card"><h3>Живот на уровне пупка</h3>${lineChart(wp, 'см')}</div>`;
   if (BODY && BODY.checkpoints) {
     const td = dateStr(); const nx = BODY.checkpoints.find((c) => c.date >= td);
     h += `<div class="card ${nx ? 'accent' : ''}"><h3>Контрольные точки</h3><table>${BODY.checkpoints.map((c) =>
