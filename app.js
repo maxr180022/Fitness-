@@ -613,7 +613,7 @@ function lineChart(points, unit) {
     <text x="${W - R}" y="${H - 5}" fill="#9aa3b2" font-size="10" text-anchor="end">${shortDate(points[points.length - 1].d)}</text></svg><div class="muted small">${esc(unit)}</div>`;
 }
 
-const MFIELDS = [['waist', 'Талия (пупок)'], ['belly', 'Низ живота'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Бицепс'], ['hips', 'Бёдра'], ['thigh', 'Бедро правое'], ['thighL', 'Бедро левое']];
+const MFIELDS = [['waist', 'Талия (пупок)'], ['belly', 'Низ живота'], ['chest', 'Грудь'], ['shoulders', 'Плечи'], ['arm', 'Бицепс'], ['hips', 'Бёдра'], ['thigh', 'Бедро правое'], ['thighL', 'Бедро левое'], ['neck', 'Шея']];
 const CFIELDS = [['weight', 'Вес, кг'], ['muscle', 'Мышцы, кг'], ['fat', 'Жир, %'], ['bmr', 'Обмен, ккал']];
 const ALLF = MFIELDS.map(([k, t]) => [k, t, 'см']).concat(CFIELDS.map(([k, t]) => [k, t.split(',')[0], t.split(', ')[1]]));
 
