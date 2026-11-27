@@ -228,3 +228,8 @@ body[data-r="w"] main { padding-bottom: 40px; }
 .mrow:first-of-type { border-top: 0; }
 td .dn { color: #c6f432; font-weight: 700; }
 td .up { color: #ff9f43; font-weight: 700; }
+
+/* календарь по факту: пропуск и перенос */
+.wdot.miss { background: #ff6b57; }
+.wk.miss { color: #ff9f43; }
+.wk.moved { color: #8a8a92; font-weight: 700; }

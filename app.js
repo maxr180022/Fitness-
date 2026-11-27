@@ -163,6 +163,57 @@ async function loadContent() {
 const workoutById = (id) => (P.workouts || []).find((w) => w.id === id);
 const setsCount = (w, exId) => (w.setsOverride && w.setsOverride[exId]) || w.setsPerExercise || 3;
 
+const isOpt = (wid) => { const w = workoutById(wid); return !!(w && w.optional); };
+
+/* Календарь по факту: тренировка записывается на тот день, когда её реально сделали (getSession берёт сегодняшнюю дату).
+   Плановая тренировка считается пропущенной, если её день прошёл, а такой тренировки не было ни в день плана, ни за 3 дня до него, ни после. */
+function planDone(w, d) {
+  const end = dateStr(); const x = new Date(d); x.setHours(12, 0, 0, 0); x.setDate(x.getDate() - 3);
+  for (let i = 0; i < 60; i++) {
+    const s = dateStr(x); const l = DB.logs[s];
+    if (l && l[w.id] && doneCount(l[w.id]) > 0) return true;
+    if (s >= end) break;
+    x.setDate(x.getDate() + 1);
+  }
+  return false;
+}
+function missedPlan() {
+  const out = [];
+  (P.workouts || []).forEach((w) => {
+    if (w.optional || w.weekday == null || w.status === 'pending' || !(w.items || []).length) return;
+    for (let n = 1; n <= 4; n++) {
+      const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - n);
+      if (d.getDay() === w.weekday) { if (!planDone(w, d)) out.push({ w, d }); break; }
+    }
+  });
+  return out;
+}
+function weekStripHTML() {
+  const today = dateStr();
+  return '<div class="week">' + weekDays().map((d, i) => {
+    const ds = dateStr(d); const isToday = ds === today;
+    const plan = (P.workouts || []).find((x) => !x.optional && x.weekday === d.getDay() && (x.items || []).length);
+    const mini = (P.workouts || []).find((x) => x.optional && (x.weekdays || []).includes(d.getDay()));
+    const day = DB.logs[ds] || {};
+    const doneIds = Object.keys(day).filter((k) => doneCount(day[k]) > 0);
+    const main = doneIds.filter((k) => !isOpt(k));
+    let cls = '', tail = '--', dot = '';
+    if (doneIds.length) {
+      const wk = workoutById(main[0] || doneIds[0]);
+      tail = wk ? esc(wk.short || '•') : '•'; dot = 'done';
+    } else if (plan) {
+      if (ds < today) {
+        if (planDone(plan, d)) { tail = esc(plan.short || '•') + '→'; cls = 'moved'; }
+        else { tail = esc(plan.short || '•'); cls = 'miss'; dot = 'miss'; }
+      } else tail = esc(plan.short || '•');
+    } else if (mini) { tail = 'м'; cls = 'moved'; }
+    const label = isToday ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}` : DSHORT[i];
+    const inner = `<span class="wl">${label}</span><i class="wdot ${dot}"></i><span class="wk ${cls}">${tail}</span>`;
+    const link = plan ? plan.id : (mini ? mini.id : '');
+    return link ? `<a class="wd ${isToday ? 'sel' : ''}" href="#/w/${esc(link)}">${inner}</a>` : `<span class="wd ${isToday ? 'sel' : ''}">${inner}</span>`;
+  }).join('') + '</div>';
+}
+
 function getSession(wid, create) {
   const d = dateStr();
   if (!DB.logs[d]) { if (!create) return null; DB.logs[d] = {}; }
@@ -243,7 +294,7 @@ function weekStats() {
     const d = new Date(now); d.setDate(now.getDate() - i);
     const day = DB.logs[dateStr(d)];
     if (day) Object.entries(day).forEach(([k, s]) => {
-      if (doneCount(s) > 0) { c++; if (s.finished) sec += sessionSeconds(s); }
+      if (doneCount(s) > 0 && !isOpt(k)) { c++; if (s.finished) sec += sessionSeconds(s); }
     });
   }
   return { c, sec };
@@ -321,7 +372,7 @@ function viewToday() {
   const wd = now.getDay();
   const title = `${WD[wd][0].toUpperCase()}${WD[wd].slice(1)}, ${now.getDate()} ${MONTHS[now.getMonth()]}`;
   const w = (P.workouts || []).find((x) => x.weekday === wd);
-  let h = `<h1>${esc(title)}</h1>`;
+  let h = `<h1>${esc(title)}</h1>` + weekStripHTML();
   if (w) {
     const s = getSession(w.id, false); const dc = doneCount(s);
     const pending = w.status === 'pending';
@@ -331,6 +382,20 @@ function viewToday() {
       <a class="btn primary block" href="#/w/${esc(w.id)}">${s && s.finished ? 'Открыть' : dc ? 'Продолжить' : pending ? 'Открыть' : 'Начать тренировку'}</a></div>`;
   } else {
     h += `<div class="card"><h3>Сегодня без силовой</h3><p class="muted">День восстановления: прогулка и лёгкая растяжка по желанию.</p></div>`;
+  }
+  // пропущенная плановая тренировка: можно сделать сегодня, в календаре отметится сегодняшний день
+  missedPlan().forEach(({ w: mw, d: md }) => {
+    h += `<div class="card"><div class="row between"><h3>Пропущена: ${esc(mw.short || '')} · ${esc(WD[md.getDay()])}</h3><span class="tag">перенос</span></div>
+      <div class="muted small" style="margin:2px 0 10px">${esc(mw.title)}. Сделаешь сегодня: в календаре отметится сегодняшний день, плановый останется пропуском.</div>
+      <a class="btn primary block" href="#/w/${esc(mw.id)}">Сделать сегодня</a></div>`;
+  });
+  // необязательный мини-комплекс в дни без силовой (кроме выходных)
+  const mini = (P.workouts || []).find((x) => x.optional && (x.weekdays || []).includes(wd));
+  if (mini) {
+    const ms = getSession(mini.id, false); const mdc = doneCount(ms);
+    h += `<div class="card ${mdc ? 'done' : ''}"><div class="row between"><h3>${esc(mini.title)}</h3><span class="tag ${mdc ? 'ok' : ''}">${mdc ? mdc + ' подх. · сделано' : 'по желанию'}</span></div>
+      <div class="muted small" style="margin:2px 0 10px">${mini.items.length} ${plural(mini.items.length, 'упражнение', 'упражнения', 'упражнений')}, около 10 минут. Не хочется? Пропусти, ничего не сломается.</div>
+      <a class="btn block" href="#/w/${esc(mini.id)}">${ms && ms.finished ? 'Открыть' : mdc ? 'Продолжить' : 'Сделать'}</a></div>`;
   }
   // питание сегодня
   const m = menuFor(wd, cycleWeek());
@@ -434,23 +499,15 @@ function viewWorkout(id) {
   const w = workoutById(id);
   if (!w) return '<p class="pad">Тренировка не найдена.</p>';
   const isCore = false;
-  const selWd = isCore ? new Date().getDay() : w.weekday;
   const tue = workoutById('tue'), fri = workoutById('fri');
   // верхняя панель
   let h = `<div class="screen"><div class="top2"><a class="rbtn" href="#/" data-act="back" aria-label="назад">${ic('back')}</a>
     <h1 class="ttl">${esc(w.title)}</h1><button class="rbtn" data-act="panel" data-k="settings" aria-label="настройки">${ic('sliders')}</button></div>`;
-  // неделя
-  h += '<div class="week">' + weekDays().map((d, i) => {
-    const wk = (P.workouts || []).find((x) => x.weekday === d.getDay());
-    const logs = DB.logs[dateStr(d)]; let done = false;
-    if (logs) Object.values(logs).forEach((s) => { if (doneCount(s) > 0) done = true; });
-    const sel = d.getDay() === selWd;
-    const label = sel ? `${pad(d.getDate())}.${pad(d.getMonth() + 1)}` : DSHORT[i];
-    const inner = `<span class="wl">${label}</span><i class="wdot ${done ? 'done' : ''}"></i><span class="wk">${wk ? esc(wk.short || '•') : '--'}</span>`;
-    return wk ? `<a class="wd ${sel ? 'sel' : ''}" href="#/w/${esc(wk.id)}">${inner}</a>` : `<span class="wd ${sel ? 'sel' : ''}">${inner}</span>`;
-  }).join('') + '</div>';
-  // А/Б + блок кор
-  h += `<div class="seg2 one"><div class="seg"><a class="${w.id === 'tue' ? 'on' : ''}" href="#/w/tue">${esc((tue && tue.short) || 'А')}</a><a class="${w.id === 'fri' ? 'on' : ''}" href="#/w/fri">${esc((fri && fri.short) || 'Б')}</a></div>
+  // неделя по факту: сделано, пропуск, перенос
+  h += weekStripHTML();
+  // А/Б (для необязательного комплекса переключатель не нужен)
+  if (w.optional) h += `<div class="panel"><p class="muted small">${esc(w.description)}</p></div>`;
+  else h += `<div class="seg2 one"><div class="seg"><a class="${w.id === 'tue' ? 'on' : ''}" href="#/w/tue">${esc((tue && tue.short) || 'А')}</a><a class="${w.id === 'fri' ? 'on' : ''}" href="#/w/fri">${esc((fri && fri.short) || 'Б')}</a></div>
 </div>`;
   if (panel === 'settings') h += settingsPanel(w);
   if (w.status === 'pending' || !w.items.length) {
@@ -480,7 +537,7 @@ function viewWorkout(id) {
   const dur = sessionSeconds(sess);
   if (finished) h += `<div class="fabs"><button class="fab" data-act="story" data-w="${esc(w.id)}"><span>Картинка для сторис</span></button><button class="fab done" data-act="finish" data-w="${esc(w.id)}">${ic('check')}<span>${dur ? esc(fmtLong(dur)) : 'Готово'}</span></button></div>`;
   else if (started || hasSets) h += `<div class="fabs"><a class="fab ghost" href="#/w/${esc(w.id)}/0"><span>Продолжить</span></a><button class="fab" data-act="finish" data-w="${esc(w.id)}"><span>Закончить день${started ? ' · <b id="wclock" data-w="' + esc(w.id) + '">' + t + '</b>' : ''}</span></button></div>`;
-  else h += `<button class="fab" data-act="wstart" data-w="${esc(w.id)}"><span>Начать ${isCore ? 'блок' : 'день ' + esc(w.short || '')}</span></button>`;
+  else h += `<button class="fab" data-act="wstart" data-w="${esc(w.id)}"><span>Начать ${w.optional ? 'комплекс' : isCore ? 'блок' : 'день ' + esc(w.short || '')}</span></button>`;
   return h;
 }
 
@@ -1022,7 +1079,7 @@ function storyData(wid, d) {
   lifts.sort((a, b) => a.rank - b.rank); // сначала с отягощением, потом свой вес, потом на время
   // номер тренировки по порядку
   const all = [];
-  Object.keys(DB.logs).forEach((dd) => Object.entries(DB.logs[dd]).forEach(([k, ss]) => { if (doneCount(ss) > 0) all.push(`${dd}|${String(ss.startedAt || 0).padStart(14, '0')}|${k}`); }));
+  Object.keys(DB.logs).forEach((dd) => Object.entries(DB.logs[dd]).forEach(([k, ss]) => { if (doneCount(ss) > 0 && !isOpt(k)) all.push(`${dd}|${String(ss.startedAt || 0).padStart(14, '0')}|${k}`); }));
   all.sort();
   const me = all.indexOf(`${d}|${String(s.startedAt || 0).padStart(14, '0')}|${wid}`);
   const number = me >= 0 ? me + 1 : all.length;
@@ -1032,7 +1089,7 @@ function storyData(wid, d) {
   const dt = new Date(d + 'T12:00:00'); let week = 0;
   for (let i = 0; i < 7; i++) {
     const x = new Date(dt); x.setDate(dt.getDate() - i);
-    const day = DB.logs[dateStr(x)]; if (day) Object.values(day).forEach((ss) => { if (doneCount(ss) > 0) week++; });
+    const day = DB.logs[dateStr(x)]; if (day) Object.entries(day).forEach(([k, ss]) => { if (doneCount(ss) > 0 && !isOpt(k)) week++; });
   }
   return { w, d, dt, secs, kcal, sets, volume: Math.round(volume), lifts, number, week, records: lifts.filter((l) => l.record).length };
 }
